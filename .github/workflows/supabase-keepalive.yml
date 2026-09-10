@@ -1,0 +1,53 @@
+name: Supabase keepalive
+
+on:
+  schedule:
+    - cron: '23 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    name: Ping Lapisonis database
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_API_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
+      LAPISONIS_KEEPALIVE_USERNAME: ${{ secrets.LAPISONIS_KEEPALIVE_USERNAME }}
+      LAPISONIS_KEEPALIVE_PASSWORD: ${{ secrets.LAPISONIS_KEEPALIVE_PASSWORD }}
+
+    steps:
+      - name: Call login RPC
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          : "${SUPABASE_URL:?Set SUPABASE_URL in repository secrets.}"
+          : "${SUPABASE_API_KEY:?Set SUPABASE_PUBLISHABLE_KEY or SUPABASE_ANON_KEY in repository secrets.}"
+          : "${LAPISONIS_KEEPALIVE_USERNAME:?Set LAPISONIS_KEEPALIVE_USERNAME in repository secrets.}"
+          : "${LAPISONIS_KEEPALIVE_PASSWORD:?Set LAPISONIS_KEEPALIVE_PASSWORD in repository secrets.}"
+
+          payload="$(python3 - <<'PY'
+          import json
+          import os
+
+          print(json.dumps({
+              "p_username": os.environ["LAPISONIS_KEEPALIVE_USERNAME"],
+              "p_password": os.environ["LAPISONIS_KEEPALIVE_PASSWORD"],
+          }))
+          PY
+          )"
+
+          response="$(curl --fail-with-body --silent --show-error \
+            --request POST "${SUPABASE_URL%/}/rest/v1/rpc/app_login" \
+            --header "apikey: ${SUPABASE_API_KEY}" \
+            --header "Authorization: Bearer ${SUPABASE_API_KEY}" \
+            --header "Content-Type: application/json" \
+            --data "${payload}")"
+
+          printf '%s' "$response" | python3 -c 'import json, sys; data = json.load(sys.stdin); raise SystemExit(0 if data.get("success") else "Keepalive login failed")'
+
+          echo "Supabase keepalive succeeded."
