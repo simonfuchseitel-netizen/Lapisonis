@@ -49,6 +49,11 @@ const elements = {
   lpMinusButton: document.getElementById('lpMinusButton'),
   lpPlusButton: document.getElementById('lpPlusButton'),
   currentLuValue: document.getElementById('currentLuValue'),
+  adminLuControls: document.getElementById('adminLuControls'),
+  luPreviewInput: document.getElementById('luPreview'),
+  luMinusButton: document.getElementById('luMinusButton'),
+  luPlusButton: document.getElementById('luPlusButton'),
+  spellRuleDisplay: document.getElementById('spellRuleDisplay'),
   learned: document.getElementById('learned'),
   stoneDamaged: document.getElementById('stoneDamaged'),
   stateTextPanel: document.getElementById('stateTextPanel'),
@@ -104,6 +109,7 @@ const elements = {
   unlockSearchInput: document.getElementById('unlockSearchInput'),
   adminUnlocks: document.getElementById('adminUnlocks'),
   rulesDisplay: document.getElementById('rulesDisplay'),
+  rulesReferenceDisplay: document.getElementById('rulesReferenceDisplay'),
   rulesText: document.getElementById('rulesText'),
   editRulesButton: document.getElementById('editRulesButton'),
   saveRulesButton: document.getElementById('saveRulesButton'),
@@ -115,6 +121,7 @@ const elements = {
 const appState = {
   sessionToken: localStorage.getItem(SESSION_KEY) || '',
   user: null,
+  previewLu: null,
   stones: [],
   elements: [],
   spells: [],
@@ -132,6 +139,369 @@ const appState = {
 let qrStream = null;
 let qrFrame = 0;
 let qrDetector = null;
+
+const MIN_LP = 1;
+const MAX_LP = 10;
+const MIN_LU = 1;
+const MAX_LU = 10;
+
+const LU_COMBINATION_REQUIREMENTS = {
+  2: 4,
+  3: 8,
+  4: 14,
+  5: 22,
+  6: 32,
+  7: 44,
+  8: 58
+};
+
+const DEFAULT_GENERAL_RULES_MARKDOWN = `# Lapisonis Regeln
+
+## Kernwerte
+
+| Wert | Regel |
+|---|---|
+| Lapisonis Übung | LU |
+| Lapisonis Punkte | LP |
+| Maximale normale LP | LP dürfen normalerweise höchstens der LU entsprechen |
+| Überladung | beginnt ab LU + 1 LP |
+| Maximale Überladung | 2 × LU |
+
+## Kontrollwurf
+
+| Regel | Wert |
+|---|---|
+| Kontrollwurf | d20 + LU |
+| Kontroll-DC | 8 + 2 × LP |
+| Kontrollwurf nötig bei | Kampf, Stress, feindlichem Ziel, beschädigtem Stein, ungeübter Kombination oder Überladung |
+
+Ein verstärkter Effekt wird nicht mehr separat verwendet.
+
+## Steinschaden
+
+| Eingesetzte LP | Grund-Steinschaden |
+|---:|---:|
+| 1-2 | 1 |
+| 3-4 | 2 |
+| 5-6 | 3 |
+| 7-8 | 4 |
+| 9-10 | 5 |
+
+Wenn eine gelernte Kombination nicht überladen wird und die LP höchstens der halben LU entsprechen, wird der Steinschaden um 1 reduziert, bis mindestens 0.
+
+## Ungeübtes Wirken
+
+| Regel | Wirkung |
+|---|---|
+| Kontrollwurf | mit Nachteil |
+| Maximal einsetzbare LP | halbe LU, aufgerundet |
+| Steinschaden | +1 zusätzlicher Steinschaden |
+| Fehlschlag | Instabilitätswurf |
+| Natürliche 1 | Backfire |
+
+## Beschädigte Steine
+
+Ein Stein gilt als beschädigt, sobald er auf die Hälfte seiner maximalen HP oder weniger gefallen ist.
+
+| Zustand | Wirkung |
+|---|---|
+| Angeschlagen | keine feste Regelstrafe |
+| Beschädigt | Kontrollwurf immer nötig |
+| Kritisch beschädigt | bei 1 HP Kontrollwurf mit Nachteil |
+| Gebrochen | Steinbruch und Instabilitätswurf |
+
+## Vereinfachter Instabilitätswurf
+
+Instabilität tritt ein bei:
+
+- Fehlschlag des Kontrollwurfs
+- natürlicher 1
+- Überladung
+- Steinbruch
+- Verwendung eines gebrochenen Steins
+- ungeübter Kombination bei Fehlschlag
+
+## LU-Aufstieg
+
+| Neue LU | Benötigte freigeschaltete Kombinationen |
+|---:|---:|
+| 2 | 4 |
+| 3 | 8 |
+| 4 | 14 |
+| 5 | 22 |
+| 6 | 32 |
+| 7 | 44 |
+| 8 | 58 |
+
+Es zählen freigeschaltete Kombinationen. Verschiedene LP-Iterationen desselben Spells zählen nicht mehrfach.
+
+Der Admin kann den Button Level up verwenden, sobald genug Kombinationen freigeschaltet wurden.`;
+
+
+
+function clampNumber(value, min, max) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return min;
+  return Math.min(max, Math.max(min, number));
+}
+
+function normalizeLuLevel(value) {
+  return clampNumber(value ?? MIN_LU, MIN_LU, MAX_LU);
+}
+
+function getStoredUserLu() {
+  return normalizeLuLevel(appState.user?.lu_level);
+}
+
+function getEffectiveLu() {
+  if (appState.user?.role === 'admin') {
+    return normalizeLuLevel(appState.previewLu ?? appState.user?.lu_level);
+  }
+
+  return getStoredUserLu();
+}
+
+function getControlDc(lp) {
+  return 8 + (2 * lp);
+}
+
+function getNeededD20Roll(lp, lu) {
+  const needed = getControlDc(lp) - lu;
+
+  if (needed <= 1) return '2+; natürliche 1 bleibt riskant';
+  if (needed > 20) return `${needed}+; normalerweise nur mit Sonderbonus erreichbar`;
+  return `${needed}+`;
+}
+
+function getBaseStoneDamage(lp) {
+  if (lp <= 0) return 0;
+  if (lp <= 2) return 1;
+  if (lp <= 4) return 2;
+  if (lp <= 6) return 3;
+  if (lp <= 8) return 4;
+  return 5;
+}
+
+function getFinalStoneDamage(lp, lu, learned, stoneDamaged) {
+  const overloaded = lp > lu;
+  const baseDamage = getBaseStoneDamage(lp);
+  let damage = overloaded ? baseDamage * 2 : baseDamage;
+
+  if (learned && !overloaded && lp <= Math.floor(lu / 2)) {
+    damage = Math.max(0, damage - 1);
+  }
+
+  if (!learned) {
+    damage += 1;
+  }
+
+  return damage;
+}
+
+function getCurrentLp() {
+  return clampNumber(elements.lpInput?.value ?? MIN_LP, MIN_LP, getMaxLp());
+}
+
+function getOverloadText(lp, lu) {
+  const startsAt = lu + 1;
+  const maximum = lu * 2;
+
+  if (lp > maximum) {
+    return `Ja. Überladung beginnt ab ${startsAt} LP; ${lp} LP liegen über dem Maximum von ${maximum} LP.`;
+  }
+
+  if (lp > lu) {
+    return `Ja. Überladung beginnt ab ${startsAt} LP. Das Maximum liegt bei ${maximum} LP.`;
+  }
+
+  return `Nein. Überladung beginnt ab ${startsAt} LP. Das Maximum liegt bei ${maximum} LP.`;
+}
+
+function getSpellRuleLine(effectText, label) {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = String(effectText || '').match(new RegExp(`^${escaped}:\\s*(.+)$`, 'im'));
+  return match ? match[1].trim() : '';
+}
+
+function buildSimplifiedInstabilityList(lp, lu, learned, stoneDamaged) {
+  const lines = ['bei Fehlschlag des Kontrollwurfs', 'bei natürlicher 1'];
+
+  if (lp > lu) {
+    lines.push('immer nach dem Zauber wegen Überladung');
+  }
+
+  if (!learned) {
+    lines.push('bei Fehlschlag mit ungeübter Kombination');
+  }
+
+  if (stoneDamaged) {
+    lines.push('bei Steinbruch oder kritischem Fehlschlag');
+  }
+
+  return lines;
+}
+
+function getLuRequirementForNextLevel(currentLu) {
+  const nextLu = currentLu + 1;
+  const required = LU_COMBINATION_REQUIREMENTS[nextLu];
+
+  if (!required) {
+    return null;
+  }
+
+  return { nextLu, required };
+}
+
+function getSpellIdsFromUnlock(unlock) {
+  const ids = new Set();
+
+  for (const field of ['spell_ids', 'spellIds', 'spells']) {
+    const values = unlock?.[field];
+
+    if (Array.isArray(values)) {
+      for (const value of values) {
+        if (typeof value === 'string') {
+          ids.add(value);
+        } else if (value?.id) {
+          ids.add(value.id);
+        } else if (value?.spell_id) {
+          ids.add(value.spell_id);
+        }
+      }
+    }
+  }
+
+  if (unlock?.spell_id) ids.add(unlock.spell_id);
+
+  if (!ids.size && appState.admin?.unlocks?.length) {
+    const match = appState.admin.unlocks.find((candidate) =>
+      candidate.id === unlock?.id ||
+      candidate.slug === unlock?.slug ||
+      candidate.id === unlock?.unlock_id ||
+      candidate.slug === unlock?.unlock_slug
+    );
+
+    if (match && match !== unlock) {
+      for (const id of getSpellIdsFromUnlock(match)) {
+        ids.add(id);
+      }
+    }
+  }
+
+  return ids;
+}
+
+function getUnlockedCombinationCountForUser(user) {
+  const ids = new Set();
+
+  if (Array.isArray(user?.spells)) {
+    for (const spell of user.spells) {
+      if (typeof spell === 'string') ids.add(spell);
+      if (spell?.id) ids.add(spell.id);
+      if (spell?.spell_id) ids.add(spell.spell_id);
+    }
+  }
+
+  for (const unlock of user?.unlocks || []) {
+    for (const id of getSpellIdsFromUnlock(unlock)) {
+      ids.add(id);
+    }
+  }
+
+  return ids.size;
+}
+
+function buildSpellRuleMarkdown(visibleItems, lp, lu) {
+  if (!visibleItems.length) {
+    return 'Wähle eine freigeschaltete Stein-Element-Kombination, um die Spell-Regeln zu sehen.';
+  }
+
+  const learned = Boolean(elements.learned?.checked);
+  const stoneDamaged = Boolean(elements.stoneDamaged?.checked);
+  const dc = getControlDc(lp);
+  const stoneDamage = getFinalStoneDamage(lp, lu, learned, stoneDamaged);
+  const disadvantageReasons = [
+    !learned ? 'ungeübte Kombination' : '',
+    lp > lu ? 'Überladung' : '',
+    stoneDamaged ? 'kritisch beschädigter Stein nach DM-Entscheid' : ''
+  ].filter(Boolean);
+  const controlRequiredReasons = [
+    'LP 1+',
+    !learned ? 'ungeübte Kombination' : '',
+    stoneDamaged ? 'beschädigter Stein' : '',
+    lp > lu ? 'Überladung' : ''
+  ].filter(Boolean).join(', ');
+
+  return visibleItems.map(({ spell, iteration }) => {
+    const effectText = renderEffectTemplate(iteration.effect_template, lp, lu);
+    const save = getSpellRuleLine(effectText, 'Save') || getSpellRuleLine(effectText, 'Saving Throw') || 'Kein spezifischer Save im Spelltext angegeben.';
+    const time = getSpellRuleLine(effectText, 'Time') || '1 Action';
+    const concentration = getSpellRuleLine(effectText, 'Concentration') || 'siehe Spelltext';
+    const range = getSpellRuleLine(effectText, 'Range') || 'siehe Spelltext';
+    const duration = getSpellRuleLine(effectText, 'Duration') || 'siehe Spelltext';
+    const target = getSpellRuleLine(effectText, 'Target') || 'siehe Spelltext';
+    const instability = buildSimplifiedInstabilityList(lp, lu, learned, stoneDamaged)
+      .map((line) => `- ${line}`)
+      .join('\n');
+
+    return `## ${spell.name || spell.id}
+
+- Time: ${time}
+- Concentration: ${concentration}
+- Range: ${range}
+- Duration: ${duration}
+- Target: ${target}
+- Save: ${save}
+
+### Kontrollwerte
+
+- Kontrollwurf: d20 + ${lu}
+- Kontroll-DC: ${dc}
+- Benötigter d20-Wurf: ${getNeededD20Roll(lp, lu)}
+- Kontrollwurf nötig wegen: ${controlRequiredReasons}
+- Überladung: ${getOverloadText(lp, lu)}
+- Steinschaden: ${stoneDamage}
+- Nachteil: ${disadvantageReasons.length ? disadvantageReasons.join(', ') : 'nein'}
+
+### Vereinfachte Instabilität
+
+${instability}`;
+  }).join('\n\n---\n\n');
+}
+
+function renderSpellRuleDisplay(visibleItems = []) {
+  if (!elements.spellRuleDisplay) return;
+
+  const lp = getCurrentLp();
+  const lu = getEffectiveLu();
+  elements.spellRuleDisplay.innerHTML = renderMarkdown(buildSpellRuleMarkdown(visibleItems, lp, lu));
+}
+
+function syncLuPreviewControls() {
+  const effectiveLu = getEffectiveLu();
+
+  if (elements.currentLuValue) {
+    elements.currentLuValue.textContent = `LU ${effectiveLu}`;
+  }
+
+  if (elements.luPreviewInput) {
+    elements.luPreviewInput.value = String(effectiveLu);
+    elements.luPreviewInput.min = String(MIN_LU);
+    elements.luPreviewInput.max = String(MAX_LU);
+  }
+}
+
+function setPreviewLu(value) {
+  appState.previewLu = normalizeLuLevel(value);
+  syncLuPreviewControls();
+  syncLpBounds();
+  refreshSpellList();
+}
+
+function changeLu(delta) {
+  setPreviewLu(getEffectiveLu() + delta);
+}
+
 
 function setMessage(element, text, type = '') {
   element.textContent = text;
@@ -397,6 +767,12 @@ function updateThemeButtons() {
 
 function applyState(data) {
   appState.user = data.user || null;
+  if (appState.user) {
+    appState.user.lu_level = normalizeLuLevel(appState.user.lu_level);
+  }
+  if (appState.previewLu === null && appState.user?.role === 'admin') {
+    appState.previewLu = appState.user.lu_level;
+  }
   appState.stones = data.stones || [];
   appState.elements = data.elements || [];
   appState.spells = data.spells || [];
@@ -461,7 +837,7 @@ function renderApp() {
 
   const roleLabel = appState.user?.role === 'admin' ? 'admin' : 'user';
   elements.accountSummary.textContent = `${appState.user.username} (${roleLabel})`;
-  elements.currentLuValue.textContent = `LU ${appState.user.lu_level || 0}`;
+  syncLuPreviewControls();
   syncLpBounds();
 
   renderUnlockBadges();
@@ -469,6 +845,7 @@ function renderApp() {
   refreshSpellList();
   setAdminVisibility(appState.user?.role === 'admin');
   renderStateText();
+  renderSpellRuleDisplay();
 }
 
 function renderUnlockBadges() {
@@ -740,17 +1117,20 @@ function refreshSpellList() {
   emptyNode(elements.spellList);
   clampLpInput();
 
+  const lp = getCurrentLp();
+  const lu = getEffectiveLu();
+
   if (!appState.spells.length) {
+    renderSpellRuleDisplay([]);
     elements.spellList.append(createTextElement('p', 'Noch nichts freigeschaltet.', 'empty-state'));
     return;
   }
 
-  const lp = Number(elements.lpInput.value || 0);
-  const lu = Number(appState.user?.lu_level || 0);
   const hasStoneSelection = appState.selectedStones.length > 0;
   const hasElementSelection = appState.selectedElements.length > 0;
 
   if (!hasStoneSelection || !hasElementSelection) {
+    renderSpellRuleDisplay([]);
     elements.spellList.append(createTextElement('p', 'Wähle Stein und Element.', 'empty-state'));
     return;
   }
@@ -766,6 +1146,8 @@ function refreshSpellList() {
     }))
     .filter((item) => item.iteration)
     .sort((a, b) => (a.spell.name || a.spell.id).localeCompare(b.spell.name || b.spell.id));
+
+  renderSpellRuleDisplay(visibleSpells);
 
   if (!visibleSpells.length) {
     elements.spellList.append(createTextElement('p', ':(', 'empty-state'));
@@ -787,16 +1169,6 @@ function refreshSpellList() {
     body.classList.toggle('hidden', isCollapsed);
     body.append(createTextElement(
       'div',
-      `${formatList(spell.stones)} | ${formatList(spell.elements)} | LP ${lp} | LU ${lu}`,
-      'spell-meta'
-    ));
-    body.append(createTextElement(
-      'div',
-      `Iteration ab LU ${iteration.min_lu}, LP ${iteration.min_lp}`,
-      'spell-meta'
-    ));
-    body.append(createTextElement(
-      'div',
       renderEffectTemplate(iteration.effect_template, lp, lu),
       'spell-description'
     ));
@@ -806,26 +1178,28 @@ function refreshSpellList() {
 }
 
 function getMaxLp() {
-  return Math.max(0, Number(appState.user?.lu_level || 0));
+  return Math.max(MIN_LP, Math.min(MAX_LP, getEffectiveLu()));
 }
 
 function clampLpInput() {
   const maxLp = getMaxLp();
-  const currentValue = Number(elements.lpInput.value || 0);
-  const nextValue = Math.max(0, Math.min(maxLp, Number.isFinite(currentValue) ? currentValue : 0));
+  const currentValue = Number(elements.lpInput.value || MIN_LP);
+  const nextValue = Math.max(MIN_LP, Math.min(maxLp, Number.isFinite(currentValue) ? currentValue : MIN_LP));
+  elements.lpInput.min = String(MIN_LP);
   elements.lpInput.max = String(maxLp);
   elements.lpInput.value = String(nextValue);
   return nextValue;
 }
 
 function syncLpBounds() {
-  elements.lpInput.min = '0';
+  elements.lpInput.min = String(MIN_LP);
+  elements.lpInput.max = String(getMaxLp());
   clampLpInput();
 }
 
 function changeLp(delta) {
-  const currentValue = Number(elements.lpInput.value || 0);
-  const nextValue = Math.max(0, Math.min(getMaxLp(), currentValue + delta));
+  const currentValue = Number(elements.lpInput.value || MIN_LP);
+  const nextValue = Math.max(MIN_LP, Math.min(getMaxLp(), currentValue + delta));
   elements.lpInput.value = String(nextValue);
   refreshSpellList();
 }
@@ -1243,11 +1617,23 @@ function renderAdminUsers() {
     const item = document.createElement('article');
     item.className = 'admin-item';
 
+    const currentLu = normalizeLuLevel(user.lu_level);
+    const combinationCount = getUnlockedCombinationCountForUser(user);
+    const nextRequirement = getLuRequirementForNextLevel(currentLu);
+    const canLevelUp = Boolean(nextRequirement && combinationCount >= nextRequirement.required);
+
     const top = document.createElement('div');
     top.className = 'admin-item-top';
     const titleBlock = document.createElement('div');
     titleBlock.append(createTextElement('h4', user.username));
-    titleBlock.append(createTextElement('div', `Rolle: ${user.role} | LU ${user.lu_level}`, 'unlock-meta'));
+    titleBlock.append(createTextElement('div', `Rolle: ${user.role} | LU ${currentLu}`, 'unlock-meta'));
+    titleBlock.append(createTextElement(
+      'div',
+      nextRequirement
+        ? `Kombinationen: ${combinationCount}/${nextRequirement.required} für LU ${nextRequirement.nextLu}`
+        : `Kombinationen: ${combinationCount} | normales Level-up abgeschlossen`,
+      'unlock-meta'
+    ));
     top.append(titleBlock);
 
     const topActions = document.createElement('div');
@@ -1284,12 +1670,32 @@ function renderAdminUsers() {
 
     const luInput = document.createElement('input');
     luInput.type = 'number';
-    luInput.min = '0';
-    luInput.max = '100';
-    luInput.value = user.lu_level || 0;
+    luInput.min = String(MIN_LU);
+    luInput.max = String(MAX_LU);
+    luInput.value = currentLu;
     luInput.placeholder = 'LU';
 
     const multiSelectSwitch = createSwitch(user.can_select_multiple_choices, 'Multi-Auswahl', () => {});
+
+    const levelUpButton = document.createElement('button');
+    levelUpButton.type = 'button';
+    levelUpButton.textContent = 'Level up';
+    levelUpButton.className = `level-up-button ${canLevelUp ? 'ready' : ''}`.trim();
+    levelUpButton.disabled = !canLevelUp;
+    levelUpButton.title = nextRequirement
+      ? canLevelUp
+        ? `Genug Kombinationen für LU ${nextRequirement.nextLu}`
+        : `Benötigt ${nextRequirement.required} Kombinationen für LU ${nextRequirement.nextLu}`
+      : 'Kein normaler LU-Aufstieg verfügbar';
+    levelUpButton.addEventListener('click', () => {
+      if (!nextRequirement) return;
+      adminAction('app_admin_update_user', {
+        p_user_id: user.id,
+        p_role: roleSelect.value,
+        p_lu_level: nextRequirement.nextLu,
+        p_can_select_multiple_choices: multiSelectSwitch.input.checked
+      }, `User auf LU ${nextRequirement.nextLu} erhöht.`);
+    });
 
     const saveButton = document.createElement('button');
     saveButton.type = 'button';
@@ -1298,7 +1704,7 @@ function renderAdminUsers() {
       adminAction('app_admin_update_user', {
         p_user_id: user.id,
         p_role: roleSelect.value,
-        p_lu_level: Number(luInput.value || 0),
+        p_lu_level: normalizeLuLevel(luInput.value),
         p_can_select_multiple_choices: multiSelectSwitch.input.checked
       }, 'User gespeichert.')
     );
@@ -1317,7 +1723,7 @@ function renderAdminUsers() {
       }, 'Passwort gespeichert.')
     );
 
-    actions.append(roleSelect, luInput, multiSelectSwitch.wrapper, saveButton, passwordInput, passwordButton);
+    actions.append(roleSelect, luInput, multiSelectSwitch.wrapper, levelUpButton, saveButton, passwordInput, passwordButton);
     item.append(actions);
     elements.adminUsers.append(item);
   }
@@ -1527,6 +1933,9 @@ function renderRules() {
   const body = appState.admin?.rules?.body || '';
   elements.rulesText.value = body;
   elements.rulesDisplay.innerHTML = renderMarkdown(body);
+  if (elements.rulesReferenceDisplay) {
+    elements.rulesReferenceDisplay.innerHTML = renderMarkdown(DEFAULT_GENERAL_RULES_MARKDOWN);
+  }
   setRulesEditorMode(false);
 }
 
@@ -1936,6 +2345,9 @@ function bindEvents() {
   elements.themeButtonAuth.addEventListener('click', toggleTheme);
   elements.lpMinusButton.addEventListener('click', () => changeLp(-1));
   elements.lpPlusButton.addEventListener('click', () => changeLp(1));
+  if (elements.luMinusButton) elements.luMinusButton.addEventListener('click', () => changeLu(-1));
+  if (elements.luPlusButton) elements.luPlusButton.addEventListener('click', () => changeLu(1));
+  if (elements.luPreviewInput) elements.luPreviewInput.addEventListener('input', () => setPreviewLu(elements.luPreviewInput.value));
   elements.deleteConfirmToggle.addEventListener('change', () => setDeleteConfirmations(elements.deleteConfirmToggle.checked));
 
   elements.mainTabs.addEventListener('click', (event) => {
@@ -1974,8 +2386,14 @@ function bindEvents() {
   elements.adminSpellSearchInput.addEventListener('input', renderAdminSpells);
   elements.unlockSearchInput.addEventListener('input', renderAdminUnlocks);
   elements.unlockSpellSearchInput.addEventListener('input', renderUnlockSpellPicker);
-  elements.learned.addEventListener('change', renderStateText);
-  elements.stoneDamaged.addEventListener('change', renderStateText);
+  elements.learned.addEventListener('change', () => {
+    renderStateText();
+    refreshSpellList();
+  });
+  elements.stoneDamaged.addEventListener('change', () => {
+    renderStateText();
+    refreshSpellList();
+  });
   elements.editStateTextButton.addEventListener('click', () => setStateEditorMode(true));
 
   elements.refreshAdminButton.addEventListener('click', loadAdminSnapshot);
@@ -1986,11 +2404,11 @@ function bindEvents() {
       p_username: elements.newUsername.value,
       p_password: elements.newUserPassword.value,
       p_role: elements.newUserRole.value,
-      p_lu_level: Number(elements.newUserLu.value || 0),
+      p_lu_level: normalizeLuLevel(elements.newUserLu.value),
       p_can_select_multiple_choices: elements.newUserMultiSelect.checked
     }, 'User erstellt.');
     elements.createUserForm.reset();
-    elements.newUserLu.value = '0';
+    elements.newUserLu.value = String(MIN_LU);
   });
 
   elements.elementForm.addEventListener('submit', (event) => {
