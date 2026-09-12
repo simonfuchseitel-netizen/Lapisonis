@@ -141,7 +141,7 @@ let qrFrame = 0;
 let qrDetector = null;
 
 const MIN_LP = 1;
-const MAX_LP = 10;
+const MAX_LP = 20;
 const MIN_LU = 1;
 const MAX_LU = 10;
 
@@ -157,15 +157,33 @@ const LU_COMBINATION_REQUIREMENTS = {
 
 const DEFAULT_GENERAL_RULES_MARKDOWN = `# Lapisonis Regeln
 
+## Neue Lapisonis-Steine nach Mohshärte
+
+| Mohs | Stein | Schule |
+|---:|---|---|
+| 1 | Talk | Verbergen |
+| 2 | Selenit | Wiederherstellung |
+| 3 | Calcit | Kontrolle |
+| 4 | Fluorit | Täuschung |
+| 5 | Apatit | Bewegung |
+| 6 | Orthoklas | Schutz |
+| 7 | Bergkristall | Speicherung |
+| 8 | Topas | Durchdringung |
+| 9 | Rubin | Zerstörung |
+| 10 | Diamant | Fokus |
+
+Die Steine folgen der göttlichen Härteleiter. Andere Mineralien können Magie beeinflussen, tragen aber keine vollständige eigene Lapisonis-Schule.
+
 ## Kernwerte
 
 | Wert | Regel |
 |---|---|
 | Lapisonis Übung | LU |
 | Lapisonis Punkte | LP |
-| Maximale normale LP | LP dürfen normalerweise höchstens der LU entsprechen |
+| Normale LP-Grenze | LP dürfen normalerweise höchstens der LU entsprechen |
 | Überladung | beginnt ab LU + 1 LP |
-| Maximale Überladung | 2 × LU |
+| Maximale LP mit Überladung | 2 × LU |
+| Absolute Website-Grenze | 20 LP |
 
 ## Kontrollwurf
 
@@ -174,6 +192,8 @@ const DEFAULT_GENERAL_RULES_MARKDOWN = `# Lapisonis Regeln
 | Kontrollwurf | d20 + LU |
 | Kontroll-DC | 8 + 2 × LP |
 | Kontrollwurf nötig bei | Kampf, Stress, feindlichem Ziel, beschädigtem Stein, ungeübter Kombination oder Überladung |
+
+Der DC selbst bleibt nach den aktuellen Regeln unverändert. Gelernt, ungeübt, beschädigt und Überladung werden über Kontrollpflicht, Nachteil und Steinschaden berücksichtigt.
 
 Ein verstärkter Effekt wird nicht mehr separat verwendet.
 
@@ -186,6 +206,11 @@ Ein verstärkter Effekt wird nicht mehr separat verwendet.
 | 5-6 | 3 |
 | 7-8 | 4 |
 | 9-10 | 5 |
+| 11-12 | 6 |
+| 13-14 | 7 |
+| 15-16 | 8 |
+| 17-18 | 9 |
+| 19-20 | 10 |
 
 Wenn eine gelernte Kombination nicht überladen wird und die LP höchstens der halben LU entsprechen, wird der Steinschaden um 1 reduziert, bis mindestens 0.
 
@@ -275,11 +300,7 @@ function getNeededD20Roll(lp, lu) {
 
 function getBaseStoneDamage(lp) {
   if (lp <= 0) return 0;
-  if (lp <= 2) return 1;
-  if (lp <= 4) return 2;
-  if (lp <= 6) return 3;
-  if (lp <= 8) return 4;
-  return 5;
+  return Math.ceil(lp / 2);
 }
 
 function getFinalStoneDamage(lp, lu, learned, stoneDamaged) {
@@ -296,6 +317,30 @@ function getFinalStoneDamage(lp, lu, learned, stoneDamaged) {
   }
 
   return damage;
+}
+
+function getControlModifierSummary(learned, stoneDamaged, lp, lu) {
+  const notes = [];
+
+  if (learned) {
+    notes.push('Kombination gelernt: kein zusätzlicher Nachteil.');
+  } else {
+    notes.push('Kombination ungeübt: Kontrollwurf mit Nachteil und +1 Steinschaden.');
+  }
+
+  if (stoneDamaged) {
+    notes.push('Stein beschädigt: Kontrollwurf immer nötig; bei kritischem Schaden kann Nachteil gelten.');
+  }
+
+  if (lp > lu) {
+    notes.push('Überladung: Kontrollwurf mit Nachteil; Steinschaden wird verdoppelt.');
+  }
+
+  if (lp <= lu && learned && !stoneDamaged) {
+    notes.push('Keine zusätzlichen Modifikatoren.');
+  }
+
+  return notes.join(' ');
 }
 
 function getCurrentLp() {
@@ -433,7 +478,7 @@ function buildSpellRuleMarkdown(visibleItems, lp, lu) {
   ].filter(Boolean).join(', ');
 
   return visibleItems.map(({ spell, iteration }) => {
-    const effectText = renderEffectTemplate(iteration.effect_template, lp, lu);
+    const effectText = renderSpellEffect(spell, iteration, lp, lu);
     const save = getSpellRuleLine(effectText, 'Save') || getSpellRuleLine(effectText, 'Saving Throw') || 'Kein spezifischer Save im Spelltext angegeben.';
     const time = getSpellRuleLine(effectText, 'Time') || '1 Action';
     const concentration = getSpellRuleLine(effectText, 'Concentration') || 'siehe Spelltext';
@@ -459,6 +504,7 @@ function buildSpellRuleMarkdown(visibleItems, lp, lu) {
 - Kontroll-DC: ${dc}
 - Benötigter d20-Wurf: ${getNeededD20Roll(lp, lu)}
 - Kontrollwurf nötig wegen: ${controlRequiredReasons}
+- DC-/Kontrollmodifikatoren: ${getControlModifierSummary(learned, stoneDamaged, lp, lu)}
 - Überladung: ${getOverloadText(lp, lu)}
 - Steinschaden: ${stoneDamage}
 - Nachteil: ${disadvantageReasons.length ? disadvantageReasons.join(', ') : 'nein'}
@@ -939,15 +985,39 @@ function getChoiceAliases(type) {
   }
 
   return {
-    quartz: 'quarz',
-    ruby: 'rubin',
-    pearl: 'perle',
-    coal: 'kohle',
-    amber: 'bernstein',
-    diamond: 'diamant',
-    tourmaline: 'turmalin',
+    quartz: 'bergkristall',
+    quarz: 'bergkristall',
+    crystal: 'bergkristall',
     rockcrystal: 'bergkristall',
-    'rock-crystal': 'bergkristall'
+    'rock-crystal': 'bergkristall',
+    ruby: 'rubin',
+    corundum: 'rubin',
+    diamond: 'diamant',
+    talc: 'talk',
+    soapstone: 'talk',
+    gypsum: 'selenit',
+    selenite: 'selenit',
+    calcite: 'calcit',
+    iceland: 'calcit',
+    fluorspar: 'fluorit',
+    fluorite: 'fluorit',
+    apatite: 'apatit',
+    orthoclase: 'orthoklas',
+    feldspar: 'orthoklas',
+    topaz: 'topas',
+
+    // Alte Namen bleiben als Such-Aliasse erhalten,
+    // zeigen aber auf die neuen Mohs-Steine.
+    coal: 'talk',
+    kohle: 'talk',
+    pearl: 'selenit',
+    perle: 'selenit',
+    amber: 'calcit',
+    bernstein: 'calcit',
+    opal: 'fluorit',
+    tourmaline: 'apatit',
+    turmalin: 'apatit',
+    obsidian: 'topas'
   };
 }
 
@@ -1102,8 +1172,48 @@ function evaluateFormulaExpression(expression, lp, lu) {
   return Number.isInteger(result) ? String(result) : String(Number(result.toFixed(2)));
 }
 
+function removeRepeatedOverloadBlocks(text) {
+  return String(text || '')
+    .replace(/\n?\s*Bei Überladung passiert Folgendes[^\n]*(\n\s*[-*][^\n]*)*/gi, '')
+    .replace(/\n?\s*Bei Überladung:\s*[^\n]*(\n\s*[-*][^\n]*)*/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function finalizeRenderedEffectText(text, lp, lu) {
+  return removeRepeatedOverloadBlocks(text)
+    .replace(/\bLU\b/g, String(lu))
+    .replace(/\bLP\b/g, String(lp))
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function isSickernderSchnitt(spell) {
+  const name = String(spell?.name || '').toLowerCase();
+  const id = String(spell?.id || '').toLowerCase();
+  return name === 'sickernder schnitt' || id.includes('obsidian-wasser') || id.includes('topas-wasser');
+}
+
+function buildSickernderSchnittText(lp) {
+  const acPenalty = lp >= 3 ? 2 : 1;
+  const extra = lp >= 5
+    ? '\nDer nächste Angriff gegen das Ziel ignoriert nichtmagische Resistenz gegen diesen Schaden.'
+    : '';
+
+  return `Time: 1 Action
+Concentration: No
+Range: ${30 + (5 * lp)} ft
+Duration: Sofort; AC-Malus bis Beginn deines nächsten Zuges
+Target: 1 Kreatur
+Save: CON Save
+
+Effect:
+Das Ziel erleidet ${lp}d6 Säure- oder Wuchtschaden.
+Bei Fehlschlag sinkt seine AC bis zum Beginn deines nächsten Zuges um ${acPenalty}.${extra}`;
+}
+
 function renderEffectTemplate(template, lp, lu) {
-  return String(template || '').replace(/\$\{([^}]+)\}/g, (fullMatch, expression) => {
+  const rendered = String(template || '').replace(/\$\{([^}]+)\}/g, (fullMatch, expression) => {
     try {
       return evaluateFormulaExpression(expression, lp, lu);
     } catch (error) {
@@ -1111,6 +1221,16 @@ function renderEffectTemplate(template, lp, lu) {
       return fullMatch;
     }
   });
+
+  return finalizeRenderedEffectText(rendered, lp, lu);
+}
+
+function renderSpellEffect(spell, iteration, lp, lu) {
+  if (isSickernderSchnitt(spell)) {
+    return buildSickernderSchnittText(lp);
+  }
+
+  return renderEffectTemplate(iteration.effect_template, lp, lu);
 }
 
 function refreshSpellList() {
@@ -1169,7 +1289,7 @@ function refreshSpellList() {
     body.classList.toggle('hidden', isCollapsed);
     body.append(createTextElement(
       'div',
-      renderEffectTemplate(iteration.effect_template, lp, lu),
+      renderSpellEffect(spell, iteration, lp, lu),
       'spell-description'
     ));
     card.append(head, body);
@@ -1178,7 +1298,7 @@ function refreshSpellList() {
 }
 
 function getMaxLp() {
-  return Math.max(MIN_LP, Math.min(MAX_LP, getEffectiveLu()));
+  return Math.max(MIN_LP, Math.min(MAX_LP, getEffectiveLu() * 2));
 }
 
 function clampLpInput() {
