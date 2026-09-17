@@ -991,107 +991,17 @@ textarea.markdown-editor {
   }
 }
 
-
-/* Admin-/Regel-Ergänzungen */
-
-.controls-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.lu-display-card {
-  min-width: 110px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 10px;
-  background: color-mix(in srgb, var(--accent) 10%, var(--surface-2));
-  text-align: right;
-}
-
-.lu-display-card span {
-  display: block;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.lu-display-card strong {
-  display: block;
-  margin-top: 2px;
-  color: var(--text);
-  font-size: 26px;
-  line-height: 1;
-}
-
-.admin-lu-controls {
-  margin: 12px 0 14px;
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
-  padding: 12px 0;
-}
-
-.lp-control-row {
-  margin-top: 14px;
-}
-
-.spell-rule-display {
-  margin-top: 10px;
-}
-
-.spell-rule-display ul {
-  margin-top: 6px;
-}
-
-.state-text-section {
-  margin-top: 16px;
+.bulk-iteration-form {
   border-top: 1px solid var(--border);
   padding-top: 14px;
 }
 
-.rules-workspace {
-  display: grid;
-  grid-template-columns: minmax(260px, 1fr) minmax(280px, 0.95fr);
-  gap: 14px;
-  align-items: start;
+.bulk-iteration-form h3 {
+  margin: 0;
 }
 
-.rules-workspace h3 {
-  margin: 0 0 8px;
-}
-
-.rules-reference-display {
-  max-height: 720px;
-  overflow: auto;
-}
-
-.level-up-button.ready {
-  border-color: color-mix(in srgb, var(--accent-strong) 75%, transparent);
-  background: var(--accent);
-  color: #ffffff;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent),
-              0 0 18px color-mix(in srgb, var(--accent) 38%, transparent);
-}
-
-.level-up-button.ready:hover:not(:disabled) {
-  background: var(--accent-strong);
-}
-
-.level-up-button:disabled {
-  opacity: 0.5;
-}
-
-@media (max-width: 860px) {
-  .controls-head,
-  .rules-workspace {
-    display: grid;
-    grid-template-columns: 1fr;
-  }
-
-  .lu-display-card {
-    width: 100%;
-    text-align: left;
-  }
+.bulk-iteration-form code {
+  border-radius: 4px;
+  padding: 1px 4px;
+  background: var(--input);
 }

@@ -115,26 +115,7 @@
 
       <section class="layout">
         <section class="panel controls-panel">
-          <div class="controls-head">
-            <div>
-              <h2>Eingabe</h2>
-              <p class="muted">Stein, Element und LP für den aktuellen Spell.</p>
-            </div>
-
-            <div class="lu-display-card">
-              <span>Lapisonis Übung</span>
-              <strong id="currentLuValue">LU 1</strong>
-            </div>
-          </div>
-
-          <div id="adminLuControls" class="admin-lu-controls admin-only hidden">
-            <label for="luPreview">LU anpassen</label>
-            <div class="stepper">
-              <button id="luMinusButton" class="secondary" type="button" aria-label="LU senken">−</button>
-              <input id="luPreview" type="number" min="1" max="10" value="1" inputmode="numeric" />
-              <button id="luPlusButton" class="secondary" type="button" aria-label="LU erhöhen">+</button>
-            </div>
-          </div>
+          <h2>Eingabe</h2>
 
           <label>Stein</label>
           <div id="stoneChoices" class="choice-grid"></div>
@@ -142,12 +123,19 @@
           <label>Element</label>
           <div id="elementChoices" class="choice-grid"></div>
 
-          <div class="lp-control-row">
-            <label for="lp">Lapisonis Punkte</label>
-            <div class="stepper">
-              <button id="lpMinusButton" class="secondary" type="button" aria-label="LP senken">−</button>
-              <input id="lp" type="number" min="1" max="1" value="1" inputmode="numeric" />
-              <button id="lpPlusButton" class="secondary" type="button" aria-label="LP erhöhen">+</button>
+          <div class="row lu-lp-row">
+            <div>
+              <label for="lp">Lapisonis Punkte</label>
+              <div class="stepper">
+                <button id="lpMinusButton" class="secondary" type="button" aria-label="LP senken">−</button>
+                <input id="lp" type="number" min="1" max="2" value="1" inputmode="numeric" />
+                <button id="lpPlusButton" class="secondary" type="button" aria-label="LP erhöhen">+</button>
+              </div>
+            </div>
+
+            <div>
+              <label>Lapisonis Übung</label>
+              <div id="currentLuValue" class="readonly-value">LU 1</div>
             </div>
           </div>
         </section>
@@ -161,41 +149,30 @@
       <section id="stateTextPanel" class="panel state-panel admin-only hidden">
         <div class="admin-item-top">
           <div>
-            <h2>Spell-Regeln</h2>
-            <p class="muted">Regelwerte für die aktuell angezeigte Fähigkeit.</p>
+            <h2>Zustandstext</h2>
+            <p class="muted">Wählt den gespeicherten Markdown-Text für die aktuelle Kombination.</p>
           </div>
+          <button id="editStateTextButton" class="icon-only secondary icon-edit" type="button" title="Zustandstext bearbeiten" aria-label="Zustandstext bearbeiten"></button>
         </div>
 
-        <div id="spellRuleDisplay" class="markdown-display spell-rule-display"></div>
+        <div class="state-toggles">
+          <label class="switch-row">
+            <input id="learned" type="checkbox" checked />
+            <span class="switch" aria-hidden="true"></span>
+            <span>Kombination gelernt</span>
+          </label>
 
-        <div class="state-text-section">
-          <div class="admin-item-top">
-            <div>
-              <h2>Zustandstext</h2>
-              <p class="muted">Zusatztext für gelernt / ungeübt / beschädigten Stein.</p>
-            </div>
-            <button id="editStateTextButton" class="icon-only secondary icon-edit" type="button" title="Zustandstext bearbeiten" aria-label="Zustandstext bearbeiten"></button>
-          </div>
+          <label class="switch-row">
+            <input id="stoneDamaged" type="checkbox" />
+            <span class="switch" aria-hidden="true"></span>
+            <span>Stein beschädigt</span>
+          </label>
+        </div>
 
-          <div class="state-toggles">
-            <label class="switch-row">
-              <input id="learned" type="checkbox" checked />
-              <span class="switch" aria-hidden="true"></span>
-              <span>Kombination gelernt</span>
-            </label>
-
-            <label class="switch-row">
-              <input id="stoneDamaged" type="checkbox" />
-              <span class="switch" aria-hidden="true"></span>
-              <span>Stein beschädigt</span>
-            </label>
-          </div>
-
-          <div id="stateTextDisplay" class="markdown-display"></div>
-          <div id="stateTextEditor" class="markdown-editor hidden">
-            <textarea id="stateTextInput" rows="6" placeholder="Markdown für die aktuelle Toggle-Kombination"></textarea>
-            <button id="saveStateTextButton" type="button">Text speichern</button>
-          </div>
+        <div id="stateTextDisplay" class="markdown-display"></div>
+        <div id="stateTextEditor" class="markdown-editor hidden">
+          <textarea id="stateTextInput" rows="6" placeholder="Markdown für die aktuelle Toggle-Kombination"></textarea>
+          <button id="saveStateTextButton" type="button">Text speichern</button>
         </div>
       </section>
     </section>
@@ -240,8 +217,8 @@
       <section class="panel compact-panel">
         <h2>Steine</h2>
         <form id="stoneForm" class="inline-form">
-          <input id="stoneSlug" type="text" placeholder="slug, z. B. orthoklas" autocomplete="off" />
-          <input id="stoneLabel" type="text" placeholder="Name, z. B. Orthoklas" autocomplete="off" />
+          <input id="stoneSlug" type="text" placeholder="slug, z. B. quarz" autocomplete="off" />
+          <input id="stoneLabel" type="text" placeholder="Name, z. B. Quarz" autocomplete="off" />
           <button type="submit">Speichern</button>
         </form>
         <div id="adminStones" class="admin-list compact"></div>
@@ -279,13 +256,25 @@
           <input id="iterationId" type="hidden" />
           <select id="iterationSpellId"></select>
           <div class="row">
-            <input id="iterationMinLu" type="number" min="0" max="100" value="0" placeholder="ab LU" />
-            <input id="iterationMinLp" type="number" min="0" max="100" value="0" placeholder="ab LP" />
+            <input id="iterationMinLu" type="number" min="1" max="10" value="1" placeholder="ab LU" />
+            <input id="iterationMinLp" type="number" min="1" max="20" value="1" placeholder="ab LP" />
           </div>
-          <textarea id="iterationEffect" rows="5" placeholder="Effekt, z. B. Gain ${LP + LU * 3} tmp HP"></textarea>
+          <textarea id="iterationEffect" rows="5" placeholder="Effekt, z. B. Gain ${LP + LU * 3} tmp HP. Bedingt: [[if LP >= 3]]Zusatztext[[endif]]"></textarea>
           <div class="button-row">
             <button type="submit">Iteration speichern</button>
             <button id="clearIterationFormButton" class="secondary" type="button">Iteration leeren</button>
+          </div>
+        </form>
+
+        <form id="bulkIterationForm" class="stacked-form iteration-form bulk-iteration-form">
+          <h3>Alle Iterationen bearbeiten</h3>
+          <p class="muted">Der Text wird auf alle bestehenden Iterationen dieses Spells angewendet. Formeln wie <code>${LP + LU * 3}</code> werden in der Anzeige direkt berechnet. Bedingte Textblöcke sind mit <code>[[if LP >= 3]]...[[endif]]</code> möglich.</p>
+          <select id="bulkIterationSpellId"></select>
+          <textarea id="bulkIterationEffect" rows="8" placeholder="Gemeinsames Template für alle Iterationen dieses Spells"></textarea>
+          <div class="button-row">
+            <button type="submit">Alle Iterationen speichern</button>
+            <button id="loadBulkIterationTemplateButton" class="secondary" type="button">Template aus erster Iteration laden</button>
+            <button id="clearBulkIterationFormButton" class="secondary" type="button">Leeren</button>
           </div>
         </form>
 
@@ -339,20 +328,10 @@
           <h2>Regeln</h2>
           <button id="editRulesButton" class="icon-only secondary icon-edit" type="button" title="Regeln bearbeiten" aria-label="Regeln bearbeiten"></button>
         </div>
-        <div class="rules-workspace">
-          <div class="rules-edit-column">
-            <h3>Eigener Regeltext</h3>
-            <div id="rulesDisplay" class="markdown-display"></div>
-            <textarea id="rulesText" class="markdown-editor hidden" rows="18" placeholder="Regeln als Markdown"></textarea>
-            <div class="button-row">
-              <button id="saveRulesButton" class="hidden" type="button">Regeln speichern</button>
-            </div>
-          </div>
-
-          <aside class="rules-reference-column">
-            <h3>Regelreferenz</h3>
-            <div id="rulesReferenceDisplay" class="markdown-display rules-reference-display"></div>
-          </aside>
+        <div id="rulesDisplay" class="markdown-display"></div>
+        <textarea id="rulesText" class="markdown-editor hidden" rows="14" placeholder="Regeln als Markdown"></textarea>
+        <div class="button-row">
+          <button id="saveRulesButton" class="hidden" type="button">Regeln speichern</button>
         </div>
       </section>
     </section>

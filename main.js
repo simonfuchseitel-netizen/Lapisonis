@@ -49,11 +49,6 @@ const elements = {
   lpMinusButton: document.getElementById('lpMinusButton'),
   lpPlusButton: document.getElementById('lpPlusButton'),
   currentLuValue: document.getElementById('currentLuValue'),
-  adminLuControls: document.getElementById('adminLuControls'),
-  luPreviewInput: document.getElementById('luPreview'),
-  luMinusButton: document.getElementById('luMinusButton'),
-  luPlusButton: document.getElementById('luPlusButton'),
-  spellRuleDisplay: document.getElementById('spellRuleDisplay'),
   learned: document.getElementById('learned'),
   stoneDamaged: document.getElementById('stoneDamaged'),
   stateTextPanel: document.getElementById('stateTextPanel'),
@@ -90,6 +85,11 @@ const elements = {
   iterationMinLp: document.getElementById('iterationMinLp'),
   iterationEffect: document.getElementById('iterationEffect'),
   clearIterationFormButton: document.getElementById('clearIterationFormButton'),
+  bulkIterationForm: document.getElementById('bulkIterationForm'),
+  bulkIterationSpellId: document.getElementById('bulkIterationSpellId'),
+  bulkIterationEffect: document.getElementById('bulkIterationEffect'),
+  loadBulkIterationTemplateButton: document.getElementById('loadBulkIterationTemplateButton'),
+  clearBulkIterationFormButton: document.getElementById('clearBulkIterationFormButton'),
   adminSpellSearchInput: document.getElementById('adminSpellSearchInput'),
   adminSpellFilterTags: document.getElementById('adminSpellFilterTags'),
   adminSpellSearchSuggestions: document.getElementById('adminSpellSearchSuggestions'),
@@ -109,7 +109,6 @@ const elements = {
   unlockSearchInput: document.getElementById('unlockSearchInput'),
   adminUnlocks: document.getElementById('adminUnlocks'),
   rulesDisplay: document.getElementById('rulesDisplay'),
-  rulesReferenceDisplay: document.getElementById('rulesReferenceDisplay'),
   rulesText: document.getElementById('rulesText'),
   editRulesButton: document.getElementById('editRulesButton'),
   saveRulesButton: document.getElementById('saveRulesButton'),
@@ -121,7 +120,6 @@ const elements = {
 const appState = {
   sessionToken: localStorage.getItem(SESSION_KEY) || '',
   user: null,
-  previewLu: null,
   stones: [],
   elements: [],
   spells: [],
@@ -140,128 +138,11 @@ let qrStream = null;
 let qrFrame = 0;
 let qrDetector = null;
 
-const MIN_LP = 1;
-const MAX_LP = 20;
 const MIN_LU = 1;
 const MAX_LU = 10;
-
-const LU_COMBINATION_REQUIREMENTS = {
-  2: 4,
-  3: 8,
-  4: 14,
-  5: 22,
-  6: 32,
-  7: 44,
-  8: 58
-};
-
-const DEFAULT_GENERAL_RULES_MARKDOWN = `# Lapisonis Regeln
-
-## Neue Lapisonis-Steine nach Mohshärte
-
-| Mohs | Stein | Schule |
-|---:|---|---|
-| 1 | Talk | Verbergen |
-| 2 | Selenit | Wiederherstellung |
-| 3 | Calcit | Kontrolle |
-| 4 | Fluorit | Täuschung |
-| 5 | Apatit | Bewegung |
-| 6 | Orthoklas | Schutz |
-| 7 | Bergkristall | Speicherung |
-| 8 | Topas | Durchdringung |
-| 9 | Rubin | Zerstörung |
-| 10 | Diamant | Fokus |
-
-Die Steine folgen der göttlichen Härteleiter. Andere Mineralien können Magie beeinflussen, tragen aber keine vollständige eigene Lapisonis-Schule.
-
-## Kernwerte
-
-| Wert | Regel |
-|---|---|
-| Lapisonis Übung | LU |
-| Lapisonis Punkte | LP |
-| Normale LP-Grenze | LP dürfen normalerweise höchstens der LU entsprechen |
-| Überladung | beginnt ab LU + 1 LP |
-| Maximale LP mit Überladung | 2 × LU |
-| Absolute Website-Grenze | 20 LP |
-
-## Kontrollwurf
-
-| Regel | Wert |
-|---|---|
-| Kontrollwurf | d20 + LU |
-| Kontroll-DC | 8 + 2 × LP |
-| Kontrollwurf nötig bei | Kampf, Stress, feindlichem Ziel, beschädigtem Stein, ungeübter Kombination oder Überladung |
-
-Der DC selbst bleibt nach den aktuellen Regeln unverändert. Gelernt, ungeübt, beschädigt und Überladung werden über Kontrollpflicht, Nachteil und Steinschaden berücksichtigt.
-
-Ein verstärkter Effekt wird nicht mehr separat verwendet.
-
-## Steinschaden
-
-| Eingesetzte LP | Grund-Steinschaden |
-|---:|---:|
-| 1-2 | 1 |
-| 3-4 | 2 |
-| 5-6 | 3 |
-| 7-8 | 4 |
-| 9-10 | 5 |
-| 11-12 | 6 |
-| 13-14 | 7 |
-| 15-16 | 8 |
-| 17-18 | 9 |
-| 19-20 | 10 |
-
-Wenn eine gelernte Kombination nicht überladen wird und die LP höchstens der halben LU entsprechen, wird der Steinschaden um 1 reduziert, bis mindestens 0.
-
-## Ungeübtes Wirken
-
-| Regel | Wirkung |
-|---|---|
-| Kontrollwurf | mit Nachteil |
-| Maximal einsetzbare LP | halbe LU, aufgerundet |
-| Steinschaden | +1 zusätzlicher Steinschaden |
-| Fehlschlag | Instabilitätswurf |
-| Natürliche 1 | Backfire |
-
-## Beschädigte Steine
-
-Ein Stein gilt als beschädigt, sobald er auf die Hälfte seiner maximalen HP oder weniger gefallen ist.
-
-| Zustand | Wirkung |
-|---|---|
-| Angeschlagen | keine feste Regelstrafe |
-| Beschädigt | Kontrollwurf immer nötig |
-| Kritisch beschädigt | bei 1 HP Kontrollwurf mit Nachteil |
-| Gebrochen | Steinbruch und Instabilitätswurf |
-
-## Vereinfachter Instabilitätswurf
-
-Instabilität tritt ein bei:
-
-- Fehlschlag des Kontrollwurfs
-- natürlicher 1
-- Überladung
-- Steinbruch
-- Verwendung eines gebrochenen Steins
-- ungeübter Kombination bei Fehlschlag
-
-## LU-Aufstieg
-
-| Neue LU | Benötigte freigeschaltete Kombinationen |
-|---:|---:|
-| 2 | 4 |
-| 3 | 8 |
-| 4 | 14 |
-| 5 | 22 |
-| 6 | 32 |
-| 7 | 44 |
-| 8 | 58 |
-
-Es zählen freigeschaltete Kombinationen. Verschiedene LP-Iterationen desselben Spells zählen nicht mehrfach.
-
-Der Admin kann den Button Level up verwenden, sobald genug Kombinationen freigeschaltet wurden.`;
-
+const MIN_LP = 1;
+const MAX_LP_MULTIPLIER = 2;
+const ABSOLUTE_MAX_LP = 20;
 
 
 function clampNumber(value, min, max) {
@@ -274,280 +155,13 @@ function normalizeLuLevel(value) {
   return clampNumber(value ?? MIN_LU, MIN_LU, MAX_LU);
 }
 
-function getStoredUserLu() {
-  return normalizeLuLevel(appState.user?.lu_level);
-}
-
 function getEffectiveLu() {
-  if (appState.user?.role === 'admin') {
-    return normalizeLuLevel(appState.previewLu ?? appState.user?.lu_level);
-  }
-
-  return getStoredUserLu();
-}
-
-function getControlDc(lp) {
-  return 8 + (2 * lp);
-}
-
-function getNeededD20Roll(lp, lu) {
-  const needed = getControlDc(lp) - lu;
-
-  if (needed <= 1) return '2+; natürliche 1 bleibt riskant';
-  if (needed > 20) return `${needed}+; normalerweise nur mit Sonderbonus erreichbar`;
-  return `${needed}+`;
-}
-
-function getBaseStoneDamage(lp) {
-  if (lp <= 0) return 0;
-  return Math.ceil(lp / 2);
-}
-
-function getFinalStoneDamage(lp, lu, learned, stoneDamaged) {
-  const overloaded = lp > lu;
-  const baseDamage = getBaseStoneDamage(lp);
-  let damage = overloaded ? baseDamage * 2 : baseDamage;
-
-  if (learned && !overloaded && lp <= Math.floor(lu / 2)) {
-    damage = Math.max(0, damage - 1);
-  }
-
-  if (!learned) {
-    damage += 1;
-  }
-
-  return damage;
-}
-
-function getControlModifierSummary(learned, stoneDamaged, lp, lu) {
-  const notes = [];
-
-  if (learned) {
-    notes.push('Kombination gelernt: kein zusätzlicher Nachteil.');
-  } else {
-    notes.push('Kombination ungeübt: Kontrollwurf mit Nachteil und +1 Steinschaden.');
-  }
-
-  if (stoneDamaged) {
-    notes.push('Stein beschädigt: Kontrollwurf immer nötig; bei kritischem Schaden kann Nachteil gelten.');
-  }
-
-  if (lp > lu) {
-    notes.push('Überladung: Kontrollwurf mit Nachteil; Steinschaden wird verdoppelt.');
-  }
-
-  if (lp <= lu && learned && !stoneDamaged) {
-    notes.push('Keine zusätzlichen Modifikatoren.');
-  }
-
-  return notes.join(' ');
+  return normalizeLuLevel(appState.user?.lu_level);
 }
 
 function getCurrentLp() {
   return clampNumber(elements.lpInput?.value ?? MIN_LP, MIN_LP, getMaxLp());
 }
-
-function getOverloadText(lp, lu) {
-  const startsAt = lu + 1;
-  const maximum = lu * 2;
-
-  if (lp > maximum) {
-    return `Ja. Überladung beginnt ab ${startsAt} LP; ${lp} LP liegen über dem Maximum von ${maximum} LP.`;
-  }
-
-  if (lp > lu) {
-    return `Ja. Überladung beginnt ab ${startsAt} LP. Das Maximum liegt bei ${maximum} LP.`;
-  }
-
-  return `Nein. Überladung beginnt ab ${startsAt} LP. Das Maximum liegt bei ${maximum} LP.`;
-}
-
-function getSpellRuleLine(effectText, label) {
-  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = String(effectText || '').match(new RegExp(`^${escaped}:\\s*(.+)$`, 'im'));
-  return match ? match[1].trim() : '';
-}
-
-function buildSimplifiedInstabilityList(lp, lu, learned, stoneDamaged) {
-  const lines = ['bei Fehlschlag des Kontrollwurfs', 'bei natürlicher 1'];
-
-  if (lp > lu) {
-    lines.push('immer nach dem Zauber wegen Überladung');
-  }
-
-  if (!learned) {
-    lines.push('bei Fehlschlag mit ungeübter Kombination');
-  }
-
-  if (stoneDamaged) {
-    lines.push('bei Steinbruch oder kritischem Fehlschlag');
-  }
-
-  return lines;
-}
-
-function getLuRequirementForNextLevel(currentLu) {
-  const nextLu = currentLu + 1;
-  const required = LU_COMBINATION_REQUIREMENTS[nextLu];
-
-  if (!required) {
-    return null;
-  }
-
-  return { nextLu, required };
-}
-
-function getSpellIdsFromUnlock(unlock) {
-  const ids = new Set();
-
-  for (const field of ['spell_ids', 'spellIds', 'spells']) {
-    const values = unlock?.[field];
-
-    if (Array.isArray(values)) {
-      for (const value of values) {
-        if (typeof value === 'string') {
-          ids.add(value);
-        } else if (value?.id) {
-          ids.add(value.id);
-        } else if (value?.spell_id) {
-          ids.add(value.spell_id);
-        }
-      }
-    }
-  }
-
-  if (unlock?.spell_id) ids.add(unlock.spell_id);
-
-  if (!ids.size && appState.admin?.unlocks?.length) {
-    const match = appState.admin.unlocks.find((candidate) =>
-      candidate.id === unlock?.id ||
-      candidate.slug === unlock?.slug ||
-      candidate.id === unlock?.unlock_id ||
-      candidate.slug === unlock?.unlock_slug
-    );
-
-    if (match && match !== unlock) {
-      for (const id of getSpellIdsFromUnlock(match)) {
-        ids.add(id);
-      }
-    }
-  }
-
-  return ids;
-}
-
-function getUnlockedCombinationCountForUser(user) {
-  const ids = new Set();
-
-  if (Array.isArray(user?.spells)) {
-    for (const spell of user.spells) {
-      if (typeof spell === 'string') ids.add(spell);
-      if (spell?.id) ids.add(spell.id);
-      if (spell?.spell_id) ids.add(spell.spell_id);
-    }
-  }
-
-  for (const unlock of user?.unlocks || []) {
-    for (const id of getSpellIdsFromUnlock(unlock)) {
-      ids.add(id);
-    }
-  }
-
-  return ids.size;
-}
-
-function buildSpellRuleMarkdown(visibleItems, lp, lu) {
-  if (!visibleItems.length) {
-    return 'Wähle eine freigeschaltete Stein-Element-Kombination, um die Spell-Regeln zu sehen.';
-  }
-
-  const learned = Boolean(elements.learned?.checked);
-  const stoneDamaged = Boolean(elements.stoneDamaged?.checked);
-  const dc = getControlDc(lp);
-  const stoneDamage = getFinalStoneDamage(lp, lu, learned, stoneDamaged);
-  const disadvantageReasons = [
-    !learned ? 'ungeübte Kombination' : '',
-    lp > lu ? 'Überladung' : '',
-    stoneDamaged ? 'kritisch beschädigter Stein nach DM-Entscheid' : ''
-  ].filter(Boolean);
-  const controlRequiredReasons = [
-    'LP 1+',
-    !learned ? 'ungeübte Kombination' : '',
-    stoneDamaged ? 'beschädigter Stein' : '',
-    lp > lu ? 'Überladung' : ''
-  ].filter(Boolean).join(', ');
-
-  return visibleItems.map(({ spell, iteration }) => {
-    const effectText = renderSpellEffect(spell, iteration, lp, lu);
-    const save = getSpellRuleLine(effectText, 'Save') || getSpellRuleLine(effectText, 'Saving Throw') || 'Kein spezifischer Save im Spelltext angegeben.';
-    const time = getSpellRuleLine(effectText, 'Time') || '1 Action';
-    const concentration = getSpellRuleLine(effectText, 'Concentration') || 'siehe Spelltext';
-    const range = getSpellRuleLine(effectText, 'Range') || 'siehe Spelltext';
-    const duration = getSpellRuleLine(effectText, 'Duration') || 'siehe Spelltext';
-    const target = getSpellRuleLine(effectText, 'Target') || 'siehe Spelltext';
-    const instability = buildSimplifiedInstabilityList(lp, lu, learned, stoneDamaged)
-      .map((line) => `- ${line}`)
-      .join('\n');
-
-    return `## ${spell.name || spell.id}
-
-- Time: ${time}
-- Concentration: ${concentration}
-- Range: ${range}
-- Duration: ${duration}
-- Target: ${target}
-- Save: ${save}
-
-### Kontrollwerte
-
-- Kontrollwurf: d20 + ${lu}
-- Kontroll-DC: ${dc}
-- Benötigter d20-Wurf: ${getNeededD20Roll(lp, lu)}
-- Kontrollwurf nötig wegen: ${controlRequiredReasons}
-- DC-/Kontrollmodifikatoren: ${getControlModifierSummary(learned, stoneDamaged, lp, lu)}
-- Überladung: ${getOverloadText(lp, lu)}
-- Steinschaden: ${stoneDamage}
-- Nachteil: ${disadvantageReasons.length ? disadvantageReasons.join(', ') : 'nein'}
-
-### Vereinfachte Instabilität
-
-${instability}`;
-  }).join('\n\n---\n\n');
-}
-
-function renderSpellRuleDisplay(visibleItems = []) {
-  if (!elements.spellRuleDisplay) return;
-
-  const lp = getCurrentLp();
-  const lu = getEffectiveLu();
-  elements.spellRuleDisplay.innerHTML = renderMarkdown(buildSpellRuleMarkdown(visibleItems, lp, lu));
-}
-
-function syncLuPreviewControls() {
-  const effectiveLu = getEffectiveLu();
-
-  if (elements.currentLuValue) {
-    elements.currentLuValue.textContent = `LU ${effectiveLu}`;
-  }
-
-  if (elements.luPreviewInput) {
-    elements.luPreviewInput.value = String(effectiveLu);
-    elements.luPreviewInput.min = String(MIN_LU);
-    elements.luPreviewInput.max = String(MAX_LU);
-  }
-}
-
-function setPreviewLu(value) {
-  appState.previewLu = normalizeLuLevel(value);
-  syncLuPreviewControls();
-  syncLpBounds();
-  refreshSpellList();
-}
-
-function changeLu(delta) {
-  setPreviewLu(getEffectiveLu() + delta);
-}
-
 
 function setMessage(element, text, type = '') {
   element.textContent = text;
@@ -816,9 +430,6 @@ function applyState(data) {
   if (appState.user) {
     appState.user.lu_level = normalizeLuLevel(appState.user.lu_level);
   }
-  if (appState.previewLu === null && appState.user?.role === 'admin') {
-    appState.previewLu = appState.user.lu_level;
-  }
   appState.stones = data.stones || [];
   appState.elements = data.elements || [];
   appState.spells = data.spells || [];
@@ -883,7 +494,7 @@ function renderApp() {
 
   const roleLabel = appState.user?.role === 'admin' ? 'admin' : 'user';
   elements.accountSummary.textContent = `${appState.user.username} (${roleLabel})`;
-  syncLuPreviewControls();
+  elements.currentLuValue.textContent = `LU ${getEffectiveLu()}`;
   syncLpBounds();
 
   renderUnlockBadges();
@@ -891,7 +502,6 @@ function renderApp() {
   refreshSpellList();
   setAdminVisibility(appState.user?.role === 'admin');
   renderStateText();
-  renderSpellRuleDisplay();
 }
 
 function renderUnlockBadges() {
@@ -985,39 +595,27 @@ function getChoiceAliases(type) {
   }
 
   return {
-    quartz: 'bergkristall',
-    quarz: 'bergkristall',
-    crystal: 'bergkristall',
-    rockcrystal: 'bergkristall',
-    'rock-crystal': 'bergkristall',
-    ruby: 'rubin',
-    corundum: 'rubin',
-    diamond: 'diamant',
     talc: 'talk',
-    soapstone: 'talk',
     gypsum: 'selenit',
     selenite: 'selenit',
     calcite: 'calcit',
-    iceland: 'calcit',
-    fluorspar: 'fluorit',
     fluorite: 'fluorit',
     apatite: 'apatit',
     orthoclase: 'orthoklas',
-    feldspar: 'orthoklas',
+    quartz: 'bergkristall',
+    rockcrystal: 'bergkristall',
+    'rock-crystal': 'bergkristall',
     topaz: 'topas',
-
-    // Alte Namen bleiben als Such-Aliasse erhalten,
-    // zeigen aber auf die neuen Mohs-Steine.
-    coal: 'talk',
-    kohle: 'talk',
+    corundum: 'rubin',
+    ruby: 'rubin',
+    diamond: 'diamant',
+    // alte Namen als Sucheingaben weiterhin erlauben
     pearl: 'selenit',
-    perle: 'selenit',
+    coal: 'talk',
     amber: 'calcit',
-    bernstein: 'calcit',
-    opal: 'fluorit',
     tourmaline: 'apatit',
-    turmalin: 'apatit',
-    obsidian: 'topas'
+    obsidian: 'topas',
+    opal: 'fluorit'
   };
 }
 
@@ -1172,85 +770,68 @@ function evaluateFormulaExpression(expression, lp, lu) {
   return Number.isInteger(result) ? String(result) : String(Number(result.toFixed(2)));
 }
 
-function removeRepeatedOverloadBlocks(text) {
-  return String(text || '')
-    .replace(/\n?\s*Bei Überladung passiert Folgendes[^\n]*(\n\s*[-*][^\n]*)*/gi, '')
-    .replace(/\n?\s*Bei Überladung:\s*[^\n]*(\n\s*[-*][^\n]*)*/gi, '')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-}
-
-function finalizeRenderedEffectText(text, lp, lu) {
-  return removeRepeatedOverloadBlocks(text)
-    .replace(/\bLU\b/g, String(lu))
+function evaluateTemplateCondition(expression, lp, lu) {
+  const normalized = String(expression || '')
     .replace(/\bLP\b/g, String(lp))
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+    .replace(/\bLU\b/g, String(lu));
+
+  if (!/^[0-9+\-*/%().\s<>=!&|]+$/.test(normalized)) {
+    throw new Error('unsupported_condition');
+  }
+
+  return Boolean(Function(`"use strict"; return (${normalized});`)());
 }
 
-function isSickernderSchnitt(spell) {
-  const name = String(spell?.name || '').toLowerCase();
-  const id = String(spell?.id || '').toLowerCase();
-  return name === 'sickernder schnitt' || id.includes('obsidian-wasser') || id.includes('topas-wasser');
-}
+function renderConditionalBlocks(template, lp, lu) {
+  let output = String(template || '');
+  let safety = 0;
+  const blockPattern = /\[\[if\s+([^\]]+)\]\]([\s\S]*?)\[\[endif\]\]/gi;
 
-function buildSickernderSchnittText(lp) {
-  const acPenalty = lp >= 3 ? 2 : 1;
-  const extra = lp >= 5
-    ? '\nDer nächste Angriff gegen das Ziel ignoriert nichtmagische Resistenz gegen diesen Schaden.'
-    : '';
+  while (blockPattern.test(output) && safety < 20) {
+    safety += 1;
+    output = output.replace(blockPattern, (fullMatch, expression, body) => {
+      try {
+        return evaluateTemplateCondition(expression, lp, lu) ? body : '';
+      } catch (error) {
+        console.error(error);
+        return '';
+      }
+    });
+  }
 
-  return `Time: 1 Action
-Concentration: No
-Range: ${30 + (5 * lp)} ft
-Duration: Sofort; AC-Malus bis Beginn deines nächsten Zuges
-Target: 1 Kreatur
-Save: CON Save
-
-Effect:
-Das Ziel erleidet ${lp}d6 Säure- oder Wuchtschaden.
-Bei Fehlschlag sinkt seine AC bis zum Beginn deines nächsten Zuges um ${acPenalty}.${extra}`;
+  return output;
 }
 
 function renderEffectTemplate(template, lp, lu) {
-  const rendered = String(template || '').replace(/\$\{([^}]+)\}/g, (fullMatch, expression) => {
-    try {
-      return evaluateFormulaExpression(expression, lp, lu);
-    } catch (error) {
-      console.error(error);
-      return fullMatch;
-    }
-  });
-
-  return finalizeRenderedEffectText(rendered, lp, lu);
-}
-
-function renderSpellEffect(spell, iteration, lp, lu) {
-  if (isSickernderSchnitt(spell)) {
-    return buildSickernderSchnittText(lp);
-  }
-
-  return renderEffectTemplate(iteration.effect_template, lp, lu);
+  const withConditions = renderConditionalBlocks(template, lp, lu);
+  return String(withConditions || '')
+    .replace(/\$\{([^}]+)\}/g, (fullMatch, expression) => {
+      try {
+        return evaluateFormulaExpression(expression, lp, lu);
+      } catch (error) {
+        console.error(error);
+        return fullMatch;
+      }
+    })
+    .replace(/\bLP\b/g, String(lp))
+    .replace(/\bLU\b/g, String(lu));
 }
 
 function refreshSpellList() {
   emptyNode(elements.spellList);
   clampLpInput();
 
-  const lp = getCurrentLp();
-  const lu = getEffectiveLu();
-
   if (!appState.spells.length) {
-    renderSpellRuleDisplay([]);
     elements.spellList.append(createTextElement('p', 'Noch nichts freigeschaltet.', 'empty-state'));
     return;
   }
 
+  const lp = getCurrentLp();
+  const lu = getEffectiveLu();
   const hasStoneSelection = appState.selectedStones.length > 0;
   const hasElementSelection = appState.selectedElements.length > 0;
 
   if (!hasStoneSelection || !hasElementSelection) {
-    renderSpellRuleDisplay([]);
     elements.spellList.append(createTextElement('p', 'Wähle Stein und Element.', 'empty-state'));
     return;
   }
@@ -1266,8 +847,6 @@ function refreshSpellList() {
     }))
     .filter((item) => item.iteration)
     .sort((a, b) => (a.spell.name || a.spell.id).localeCompare(b.spell.name || b.spell.id));
-
-  renderSpellRuleDisplay(visibleSpells);
 
   if (!visibleSpells.length) {
     elements.spellList.append(createTextElement('p', ':(', 'empty-state'));
@@ -1289,7 +868,17 @@ function refreshSpellList() {
     body.classList.toggle('hidden', isCollapsed);
     body.append(createTextElement(
       'div',
-      renderSpellEffect(spell, iteration, lp, lu),
+      `${formatList(spell.stones)} | ${formatList(spell.elements)} | LP ${lp} | LU ${lu}`,
+      'spell-meta'
+    ));
+    body.append(createTextElement(
+      'div',
+      `Iteration ab LU ${iteration.min_lu}, LP ${iteration.min_lp}`,
+      'spell-meta'
+    ));
+    body.append(createTextElement(
+      'div',
+      renderEffectTemplate(iteration.effect_template, lp, lu),
       'spell-description'
     ));
     card.append(head, body);
@@ -1298,7 +887,7 @@ function refreshSpellList() {
 }
 
 function getMaxLp() {
-  return Math.max(MIN_LP, Math.min(MAX_LP, getEffectiveLu() * 2));
+  return Math.max(MIN_LP, Math.min(ABSOLUTE_MAX_LP, getEffectiveLu() * MAX_LP_MULTIPLIER));
 }
 
 function clampLpInput() {
@@ -1737,23 +1326,11 @@ function renderAdminUsers() {
     const item = document.createElement('article');
     item.className = 'admin-item';
 
-    const currentLu = normalizeLuLevel(user.lu_level);
-    const combinationCount = getUnlockedCombinationCountForUser(user);
-    const nextRequirement = getLuRequirementForNextLevel(currentLu);
-    const canLevelUp = Boolean(nextRequirement && combinationCount >= nextRequirement.required);
-
     const top = document.createElement('div');
     top.className = 'admin-item-top';
     const titleBlock = document.createElement('div');
     titleBlock.append(createTextElement('h4', user.username));
-    titleBlock.append(createTextElement('div', `Rolle: ${user.role} | LU ${currentLu}`, 'unlock-meta'));
-    titleBlock.append(createTextElement(
-      'div',
-      nextRequirement
-        ? `Kombinationen: ${combinationCount}/${nextRequirement.required} für LU ${nextRequirement.nextLu}`
-        : `Kombinationen: ${combinationCount} | normales Level-up abgeschlossen`,
-      'unlock-meta'
-    ));
+    titleBlock.append(createTextElement('div', `Rolle: ${user.role} | LU ${normalizeLuLevel(user.lu_level)}`, 'unlock-meta'));
     top.append(titleBlock);
 
     const topActions = document.createElement('div');
@@ -1792,30 +1369,10 @@ function renderAdminUsers() {
     luInput.type = 'number';
     luInput.min = String(MIN_LU);
     luInput.max = String(MAX_LU);
-    luInput.value = currentLu;
+    luInput.value = normalizeLuLevel(user.lu_level);
     luInput.placeholder = 'LU';
 
     const multiSelectSwitch = createSwitch(user.can_select_multiple_choices, 'Multi-Auswahl', () => {});
-
-    const levelUpButton = document.createElement('button');
-    levelUpButton.type = 'button';
-    levelUpButton.textContent = 'Level up';
-    levelUpButton.className = `level-up-button ${canLevelUp ? 'ready' : ''}`.trim();
-    levelUpButton.disabled = !canLevelUp;
-    levelUpButton.title = nextRequirement
-      ? canLevelUp
-        ? `Genug Kombinationen für LU ${nextRequirement.nextLu}`
-        : `Benötigt ${nextRequirement.required} Kombinationen für LU ${nextRequirement.nextLu}`
-      : 'Kein normaler LU-Aufstieg verfügbar';
-    levelUpButton.addEventListener('click', () => {
-      if (!nextRequirement) return;
-      adminAction('app_admin_update_user', {
-        p_user_id: user.id,
-        p_role: roleSelect.value,
-        p_lu_level: nextRequirement.nextLu,
-        p_can_select_multiple_choices: multiSelectSwitch.input.checked
-      }, `User auf LU ${nextRequirement.nextLu} erhöht.`);
-    });
 
     const saveButton = document.createElement('button');
     saveButton.type = 'button';
@@ -1843,7 +1400,7 @@ function renderAdminUsers() {
       }, 'Passwort gespeichert.')
     );
 
-    actions.append(roleSelect, luInput, multiSelectSwitch.wrapper, levelUpButton, saveButton, passwordInput, passwordButton);
+    actions.append(roleSelect, luInput, multiSelectSwitch.wrapper, saveButton, passwordInput, passwordButton);
     item.append(actions);
     elements.adminUsers.append(item);
   }
@@ -1888,14 +1445,20 @@ function renderAdminSimpleList(type) {
 
 function renderIterationSpellOptions() {
   const selected = elements.iterationSpellId.value || elements.spellId.value;
+  const bulkSelected = elements.bulkIterationSpellId?.value || selected;
   emptyNode(elements.iterationSpellId);
+  if (elements.bulkIterationSpellId) emptyNode(elements.bulkIterationSpellId);
 
   const spells = appState.admin?.spells || [];
   if (!spells.length) {
     const option = document.createElement('option');
-    option.textContent = 'Erst Spell erstellen';
+    option.textContent = 'Zuerst Spell erstellen';
     option.disabled = true;
     elements.iterationSpellId.append(option);
+    if (elements.bulkIterationSpellId) {
+      const bulkOption = option.cloneNode(true);
+      elements.bulkIterationSpellId.append(bulkOption);
+    }
     return;
   }
 
@@ -1905,6 +1468,14 @@ function renderIterationSpellOptions() {
     option.textContent = `${spell.name || spell.id} (${spell.id})`;
     option.selected = spell.id === selected;
     elements.iterationSpellId.append(option);
+
+    if (elements.bulkIterationSpellId) {
+      const bulkOption = document.createElement('option');
+      bulkOption.value = spell.id;
+      bulkOption.textContent = `${spell.name || spell.id} (${spell.id})`;
+      bulkOption.selected = spell.id === bulkSelected;
+      elements.bulkIterationSpellId.append(bulkOption);
+    }
   }
 }
 
@@ -1952,6 +1523,7 @@ function renderAdminSpells() {
     actions.append(
       createCollapseButton(spell.id, 'admin'),
       createIconButton('edit', 'Spell bearbeiten', () => fillSpellForm(spell)),
+      createIconButton('edit', 'Alle Iterationen bearbeiten', () => fillBulkIterationForm(spell)),
       createIconButton('trash', 'Spell löschen', () => deleteAdminSpell(spell), 'danger')
     );
 
@@ -2053,9 +1625,6 @@ function renderRules() {
   const body = appState.admin?.rules?.body || '';
   elements.rulesText.value = body;
   elements.rulesDisplay.innerHTML = renderMarkdown(body);
-  if (elements.rulesReferenceDisplay) {
-    elements.rulesReferenceDisplay.innerHTML = renderMarkdown(DEFAULT_GENERAL_RULES_MARKDOWN);
-  }
   setRulesEditorMode(false);
 }
 
@@ -2365,6 +1934,78 @@ function escapeHtml(text) {
     .replace(/'/g, '&#039;');
 }
 
+
+function getSelectedBulkSpell() {
+  const spellId = elements.bulkIterationSpellId?.value || elements.iterationSpellId.value || elements.spellId.value;
+  return (appState.admin?.spells || []).find((spell) => spell.id === spellId) || null;
+}
+
+function fillBulkIterationForm(spell) {
+  if (!spell || !elements.bulkIterationForm) return;
+  elements.bulkIterationSpellId.value = spell.id || '';
+  const firstIteration = [...(spell.iterations || [])]
+    .sort((a, b) => Number(a.min_lu) - Number(b.min_lu) || Number(a.min_lp) - Number(b.min_lp))[0];
+  elements.bulkIterationEffect.value = firstIteration?.effect_template || '';
+  setActiveTab('spellsTab');
+  elements.bulkIterationEffect.focus();
+}
+
+function loadBulkIterationTemplate() {
+  const spell = getSelectedBulkSpell();
+  if (!spell) return;
+  fillBulkIterationForm(spell);
+}
+
+function clearBulkIterationForm() {
+  if (!elements.bulkIterationForm) return;
+  elements.bulkIterationForm.reset();
+  if (elements.bulkIterationSpellId?.options.length) {
+    elements.bulkIterationSpellId.selectedIndex = 0;
+  }
+  elements.bulkIterationEffect.value = '';
+}
+
+async function saveBulkIterations() {
+  const spell = getSelectedBulkSpell();
+  const template = elements.bulkIterationEffect?.value ?? '';
+
+  if (!spell) {
+    setMessage(elements.adminMessage, 'Kein Spell ausgewählt.', 'error');
+    return;
+  }
+
+  const iterations = spell.iterations || [];
+  if (!iterations.length) {
+    setMessage(elements.adminMessage, 'Dieser Spell hat keine Iterationen.', 'error');
+    return;
+  }
+
+  setMessage(elements.adminMessage, '');
+
+  try {
+    for (const iteration of iterations) {
+      const data = await rpc('app_admin_save_spell_iteration', {
+        p_session_token: appState.sessionToken,
+        p_iteration_id: iteration.id || null,
+        p_spell_id: spell.id,
+        p_min_lu: Number(iteration.min_lu || MIN_LU),
+        p_min_lp: Number(iteration.min_lp || MIN_LP),
+        p_effect_template: template
+      });
+
+      if (data?.success === false) {
+        throw new Error(data.error || 'bulk_update_failed');
+      }
+    }
+
+    await loadState();
+    setMessage(elements.adminMessage, `Alle ${iterations.length} Iterationen von ${spell.name || spell.id} gespeichert.`, 'success');
+  } catch (error) {
+    console.error(error);
+    setMessage(elements.adminMessage, 'Alle Iterationen konnten nicht gespeichert werden.', 'error');
+  }
+}
+
 function fillSpellForm(spell) {
   elements.spellId.value = spell.id || '';
   elements.spellName.value = spell.name || '';
@@ -2394,8 +2035,8 @@ function fillIterationForm(iteration) {
 function clearIterationForm() {
   elements.iterationForm.reset();
   elements.iterationId.value = '';
-  elements.iterationMinLu.value = '0';
-  elements.iterationMinLp.value = '0';
+  elements.iterationMinLu.value = String(MIN_LU);
+  elements.iterationMinLp.value = String(MIN_LP);
 }
 
 function fillUnlockForm(unlock) {
@@ -2465,9 +2106,6 @@ function bindEvents() {
   elements.themeButtonAuth.addEventListener('click', toggleTheme);
   elements.lpMinusButton.addEventListener('click', () => changeLp(-1));
   elements.lpPlusButton.addEventListener('click', () => changeLp(1));
-  if (elements.luMinusButton) elements.luMinusButton.addEventListener('click', () => changeLu(-1));
-  if (elements.luPlusButton) elements.luPlusButton.addEventListener('click', () => changeLu(1));
-  if (elements.luPreviewInput) elements.luPreviewInput.addEventListener('input', () => setPreviewLu(elements.luPreviewInput.value));
   elements.deleteConfirmToggle.addEventListener('change', () => setDeleteConfirmations(elements.deleteConfirmToggle.checked));
 
   elements.mainTabs.addEventListener('click', (event) => {
@@ -2502,18 +2140,15 @@ function bindEvents() {
     }
   });
 
-  elements.lpInput.addEventListener('input', refreshSpellList);
+  elements.lpInput.addEventListener('input', () => {
+    clampLpInput();
+    refreshSpellList();
+  });
   elements.adminSpellSearchInput.addEventListener('input', renderAdminSpells);
   elements.unlockSearchInput.addEventListener('input', renderAdminUnlocks);
   elements.unlockSpellSearchInput.addEventListener('input', renderUnlockSpellPicker);
-  elements.learned.addEventListener('change', () => {
-    renderStateText();
-    refreshSpellList();
-  });
-  elements.stoneDamaged.addEventListener('change', () => {
-    renderStateText();
-    refreshSpellList();
-  });
+  elements.learned.addEventListener('change', renderStateText);
+  elements.stoneDamaged.addEventListener('change', renderStateText);
   elements.editStateTextButton.addEventListener('click', () => setStateEditorMode(true));
 
   elements.refreshAdminButton.addEventListener('click', loadAdminSnapshot);
@@ -2565,14 +2200,26 @@ function bindEvents() {
     adminAction('app_admin_save_spell_iteration', {
       p_iteration_id: elements.iterationId.value || null,
       p_spell_id: elements.iterationSpellId.value,
-      p_min_lu: Number(elements.iterationMinLu.value || 0),
-      p_min_lp: Number(elements.iterationMinLp.value || 0),
+      p_min_lu: normalizeLuLevel(elements.iterationMinLu.value),
+      p_min_lp: clampNumber(elements.iterationMinLp.value, MIN_LP, ABSOLUTE_MAX_LP),
       p_effect_template: elements.iterationEffect.value
     }, 'Iteration gespeichert.');
   });
 
   elements.clearSpellFormButton.addEventListener('click', clearSpellForm);
   elements.clearIterationFormButton.addEventListener('click', clearIterationForm);
+  if (elements.bulkIterationForm) {
+    elements.bulkIterationForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      saveBulkIterations();
+    });
+  }
+  if (elements.loadBulkIterationTemplateButton) {
+    elements.loadBulkIterationTemplateButton.addEventListener('click', loadBulkIterationTemplate);
+  }
+  if (elements.clearBulkIterationFormButton) {
+    elements.clearBulkIterationFormButton.addEventListener('click', clearBulkIterationForm);
+  }
 
   elements.unlockAdminForm.addEventListener('submit', (event) => {
     event.preventDefault();
