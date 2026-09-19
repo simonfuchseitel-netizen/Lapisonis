@@ -991,17 +991,3 @@ textarea.markdown-editor {
   }
 }
 
-.bulk-iteration-form {
-  border-top: 1px solid var(--border);
-  padding-top: 14px;
-}
-
-.bulk-iteration-form h3 {
-  margin: 0;
-}
-
-.bulk-iteration-form code {
-  border-radius: 4px;
-  padding: 1px 4px;
-  background: var(--input);
-}

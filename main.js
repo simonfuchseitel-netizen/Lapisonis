@@ -85,11 +85,6 @@ const elements = {
   iterationMinLp: document.getElementById('iterationMinLp'),
   iterationEffect: document.getElementById('iterationEffect'),
   clearIterationFormButton: document.getElementById('clearIterationFormButton'),
-  bulkIterationForm: document.getElementById('bulkIterationForm'),
-  bulkIterationSpellId: document.getElementById('bulkIterationSpellId'),
-  bulkIterationEffect: document.getElementById('bulkIterationEffect'),
-  loadBulkIterationTemplateButton: document.getElementById('loadBulkIterationTemplateButton'),
-  clearBulkIterationFormButton: document.getElementById('clearBulkIterationFormButton'),
   adminSpellSearchInput: document.getElementById('adminSpellSearchInput'),
   adminSpellFilterTags: document.getElementById('adminSpellFilterTags'),
   adminSpellSearchSuggestions: document.getElementById('adminSpellSearchSuggestions'),
@@ -1445,9 +1440,7 @@ function renderAdminSimpleList(type) {
 
 function renderIterationSpellOptions() {
   const selected = elements.iterationSpellId.value || elements.spellId.value;
-  const bulkSelected = elements.bulkIterationSpellId?.value || selected;
   emptyNode(elements.iterationSpellId);
-  if (elements.bulkIterationSpellId) emptyNode(elements.bulkIterationSpellId);
 
   const spells = appState.admin?.spells || [];
   if (!spells.length) {
@@ -1455,10 +1448,6 @@ function renderIterationSpellOptions() {
     option.textContent = 'Zuerst Spell erstellen';
     option.disabled = true;
     elements.iterationSpellId.append(option);
-    if (elements.bulkIterationSpellId) {
-      const bulkOption = option.cloneNode(true);
-      elements.bulkIterationSpellId.append(bulkOption);
-    }
     return;
   }
 
@@ -1468,14 +1457,6 @@ function renderIterationSpellOptions() {
     option.textContent = `${spell.name || spell.id} (${spell.id})`;
     option.selected = spell.id === selected;
     elements.iterationSpellId.append(option);
-
-    if (elements.bulkIterationSpellId) {
-      const bulkOption = document.createElement('option');
-      bulkOption.value = spell.id;
-      bulkOption.textContent = `${spell.name || spell.id} (${spell.id})`;
-      bulkOption.selected = spell.id === bulkSelected;
-      elements.bulkIterationSpellId.append(bulkOption);
-    }
   }
 }
 
@@ -1523,7 +1504,6 @@ function renderAdminSpells() {
     actions.append(
       createCollapseButton(spell.id, 'admin'),
       createIconButton('edit', 'Spell bearbeiten', () => fillSpellForm(spell)),
-      createIconButton('edit', 'Alle Iterationen bearbeiten', () => fillBulkIterationForm(spell)),
       createIconButton('trash', 'Spell löschen', () => deleteAdminSpell(spell), 'danger')
     );
 
@@ -1934,77 +1914,45 @@ function escapeHtml(text) {
     .replace(/'/g, '&#039;');
 }
 
-
-function getSelectedBulkSpell() {
-  const spellId = elements.bulkIterationSpellId?.value || elements.iterationSpellId.value || elements.spellId.value;
-  return (appState.admin?.spells || []).find((spell) => spell.id === spellId) || null;
+function slugify(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48);
 }
 
-function fillBulkIterationForm(spell) {
-  if (!spell || !elements.bulkIterationForm) return;
-  elements.bulkIterationSpellId.value = spell.id || '';
-  const firstIteration = [...(spell.iterations || [])]
-    .sort((a, b) => Number(a.min_lu) - Number(b.min_lu) || Number(a.min_lp) - Number(b.min_lp))[0];
-  elements.bulkIterationEffect.value = firstIteration?.effect_template || '';
-  setActiveTab('spellsTab');
-  elements.bulkIterationEffect.focus();
-}
+function getRandomSlugSuffix() {
+  const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  const bytes = new Uint8Array(6);
 
-function loadBulkIterationTemplate() {
-  const spell = getSelectedBulkSpell();
-  if (!spell) return;
-  fillBulkIterationForm(spell);
-}
-
-function clearBulkIterationForm() {
-  if (!elements.bulkIterationForm) return;
-  elements.bulkIterationForm.reset();
-  if (elements.bulkIterationSpellId?.options.length) {
-    elements.bulkIterationSpellId.selectedIndex = 0;
-  }
-  elements.bulkIterationEffect.value = '';
-}
-
-async function saveBulkIterations() {
-  const spell = getSelectedBulkSpell();
-  const template = elements.bulkIterationEffect?.value ?? '';
-
-  if (!spell) {
-    setMessage(elements.adminMessage, 'Kein Spell ausgewählt.', 'error');
-    return;
-  }
-
-  const iterations = spell.iterations || [];
-  if (!iterations.length) {
-    setMessage(elements.adminMessage, 'Dieser Spell hat keine Iterationen.', 'error');
-    return;
-  }
-
-  setMessage(elements.adminMessage, '');
-
-  try {
-    for (const iteration of iterations) {
-      const data = await rpc('app_admin_save_spell_iteration', {
-        p_session_token: appState.sessionToken,
-        p_iteration_id: iteration.id || null,
-        p_spell_id: spell.id,
-        p_min_lu: Number(iteration.min_lu || MIN_LU),
-        p_min_lp: Number(iteration.min_lp || MIN_LP),
-        p_effect_template: template
-      });
-
-      if (data?.success === false) {
-        throw new Error(data.error || 'bulk_update_failed');
-      }
+  if (window.crypto?.getRandomValues) {
+    window.crypto.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256);
     }
-
-    await loadState();
-    setMessage(elements.adminMessage, `Alle ${iterations.length} Iterationen von ${spell.name || spell.id} gespeichert.`, 'success');
-  } catch (error) {
-    console.error(error);
-    setMessage(elements.adminMessage, 'Alle Iterationen konnten nicht gespeichert werden.', 'error');
   }
+
+  return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join('');
 }
+
+function generateUnlockSlug() {
+  const base = slugify(elements.unlockLabel.value || elements.unlockPasswordAdmin.value || 'unlock') || 'unlock';
+  return `${base}-${getRandomSlugSuffix()}`;
+}
+
+function getUnlockSlugForSave() {
+  const existingSlug = elements.unlockSlug.value.trim();
+  if (existingSlug) return existingSlug;
+
+  const generatedSlug = generateUnlockSlug();
+  elements.unlockSlug.value = generatedSlug;
+  return generatedSlug;
+}
+
 
 function fillSpellForm(spell) {
   elements.spellId.value = spell.id || '';
@@ -2208,24 +2156,12 @@ function bindEvents() {
 
   elements.clearSpellFormButton.addEventListener('click', clearSpellForm);
   elements.clearIterationFormButton.addEventListener('click', clearIterationForm);
-  if (elements.bulkIterationForm) {
-    elements.bulkIterationForm.addEventListener('submit', (event) => {
-      event.preventDefault();
-      saveBulkIterations();
-    });
-  }
-  if (elements.loadBulkIterationTemplateButton) {
-    elements.loadBulkIterationTemplateButton.addEventListener('click', loadBulkIterationTemplate);
-  }
-  if (elements.clearBulkIterationFormButton) {
-    elements.clearBulkIterationFormButton.addEventListener('click', clearBulkIterationForm);
-  }
 
   elements.unlockAdminForm.addEventListener('submit', (event) => {
     event.preventDefault();
     adminAction('app_admin_save_unlock', {
       p_unlock_id: elements.unlockId.value || null,
-      p_slug: elements.unlockSlug.value,
+      p_slug: getUnlockSlugForSave(),
       p_label: elements.unlockLabel.value,
       p_password: elements.unlockPasswordAdmin.value,
       p_spell_ids: getSelectValues(elements.unlockSpellIds),

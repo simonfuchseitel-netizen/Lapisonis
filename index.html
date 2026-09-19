@@ -266,18 +266,6 @@
           </div>
         </form>
 
-        <form id="bulkIterationForm" class="stacked-form iteration-form bulk-iteration-form">
-          <h3>Alle Iterationen bearbeiten</h3>
-          <p class="muted">Der Text wird auf alle bestehenden Iterationen dieses Spells angewendet. Formeln wie <code>${LP + LU * 3}</code> werden in der Anzeige direkt berechnet. Bedingte Textblöcke sind mit <code>[[if LP >= 3]]...[[endif]]</code> möglich.</p>
-          <select id="bulkIterationSpellId"></select>
-          <textarea id="bulkIterationEffect" rows="8" placeholder="Gemeinsames Template für alle Iterationen dieses Spells"></textarea>
-          <div class="button-row">
-            <button type="submit">Alle Iterationen speichern</button>
-            <button id="loadBulkIterationTemplateButton" class="secondary" type="button">Template aus erster Iteration laden</button>
-            <button id="clearBulkIterationFormButton" class="secondary" type="button">Leeren</button>
-          </div>
-        </form>
-
         <div class="search-area admin-search-area">
           <label class="visually-hidden" for="adminSpellSearchInput">Admin-Spells suchen</label>
           <input id="adminSpellSearchInput" type="search" placeholder="Spells suchen, e=wasser, s=quarz" list="adminSpellSearchSuggestions" autocomplete="off" />
@@ -293,10 +281,8 @@
         <h2>Unlocks</h2>
         <form id="unlockAdminForm" class="stacked-form">
           <input id="unlockId" type="hidden" />
-          <div class="row">
-            <input id="unlockSlug" type="text" placeholder="unlock-slug" autocomplete="off" />
-            <input id="unlockLabel" type="text" placeholder="Name" autocomplete="off" />
-          </div>
+          <input id="unlockSlug" type="hidden" />
+          <input id="unlockLabel" type="text" placeholder="Name" autocomplete="off" />
           <input id="unlockPasswordAdmin" type="text" placeholder="Unlock-Passwort" autocomplete="off" />
           <label class="field-label" for="unlockSpellSearchInput">Spells</label>
           <input id="unlockSpellSearchInput" type="search" placeholder="Spells nach Name oder ID filtern" autocomplete="off" />
