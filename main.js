@@ -317,6 +317,27 @@ function itemLabelBySlug(type, slug) {
   return item?.label || slug;
 }
 
+function areDisplayValuesEquivalent(label, value) {
+  return normalizeSearchText(label || '').replace(/[^a-z0-9]+/g, '') ===
+    normalizeSearchText(value || '').replace(/[^a-z0-9]+/g, '');
+}
+
+function formatNameWithIdentifier(name, identifier) {
+  const displayName = String(name || identifier || '').trim();
+  const displayIdentifier = String(identifier || '').trim();
+
+  if (!displayIdentifier || areDisplayValuesEquivalent(displayName, displayIdentifier)) {
+    return displayName;
+  }
+
+  return `${displayName} (${displayIdentifier})`;
+}
+
+function appendIdentifierIfDifferent(parent, identifier, name, className = 'unlock-meta') {
+  if (!identifier || areDisplayValuesEquivalent(name, identifier)) return;
+  parent.append(createTextElement('small', identifier, className));
+}
+
 function spellSearchTexts(spell, includeIterations = false) {
   const texts = [
     spell.id,
@@ -344,7 +365,7 @@ function getSpellById(spellId) {
 
 function formatSpellReference(spellId) {
   const spell = getSpellById(spellId);
-  return spell?.name ? `${spell.name} (${spellId})` : spellId;
+  return spell?.name ? formatNameWithIdentifier(spell.name, spellId) : spellId;
 }
 
 function isItemCollapsed(id, scope) {
@@ -1113,7 +1134,8 @@ async function adminAction(functionName, args, successMessage) {
     setMessage(elements.adminMessage, successMessage, 'success');
   } catch (error) {
     console.error(error);
-    setMessage(elements.adminMessage, 'Admin-Aktion fehlgeschlagen.', 'error');
+    const details = error?.message ? `: ${error.message}` : '';
+    setMessage(elements.adminMessage, `Admin-Aktion fehlgeschlagen${details}`, 'error');
   }
 }
 
@@ -1237,7 +1259,7 @@ function renderAdminSelectOptions() {
     appState.admin?.stones || [],
     getSelectValues(elements.spellStones),
     (stone) => stone.slug,
-    (stone) => `${stone.label || stone.slug} (${stone.slug})`
+    (stone) => formatNameWithIdentifier(stone.label || stone.slug, stone.slug)
   );
 
   fillSelectOptions(
@@ -1245,7 +1267,7 @@ function renderAdminSelectOptions() {
     appState.admin?.elements || [],
     getSelectValues(elements.spellElements),
     (element) => element.slug,
-    (element) => `${element.label || element.slug} (${element.slug})`
+    (element) => formatNameWithIdentifier(element.label || element.slug, element.slug)
   );
 
   fillSelectOptions(
@@ -1253,7 +1275,7 @@ function renderAdminSelectOptions() {
     appState.admin?.spells || [],
     getSelectValues(elements.unlockSpellIds),
     (spell) => spell.id,
-    (spell) => `${spell.name || spell.id} (${spell.id})`
+    (spell) => formatNameWithIdentifier(spell.name || spell.id, spell.id)
   );
 
   renderUnlockSpellPicker();
@@ -1307,7 +1329,7 @@ function renderUnlockSpellPicker() {
     const text = document.createElement('span');
     text.className = 'picker-row-text';
     text.append(createTextElement('strong', spell.name || spell.id));
-    text.append(createTextElement('small', spell.id));
+    appendIdentifierIfDifferent(text, spell.id, spell.name || spell.id);
 
     label.append(checkbox, text);
     elements.unlockSpellPicker.append(label);
@@ -1414,7 +1436,7 @@ function renderAdminSimpleList(type) {
     top.className = 'admin-item-top';
     const titleBlock = document.createElement('div');
     titleBlock.append(createTextElement('h4', itemData.label || itemData.slug));
-    titleBlock.append(createTextElement('div', itemData.slug, 'unlock-meta'));
+    appendIdentifierIfDifferent(titleBlock, itemData.slug, itemData.label || itemData.slug, 'unlock-meta');
     top.append(titleBlock);
 
     const actions = document.createElement('div');
@@ -1953,6 +1975,45 @@ function getUnlockSlugForSave() {
   return generatedSlug;
 }
 
+function getUnlockLabelForSave(slug) {
+  const label = elements.unlockLabel.value.trim();
+  if (label) return label;
+
+  const fallbackLabel = formatNameWithIdentifier('Unlock', slug);
+  elements.unlockLabel.value = fallbackLabel;
+  return fallbackLabel;
+}
+
+function generateSpellIdFromSelection() {
+  const parts = [
+    ...getSelectValues(elements.spellStones),
+    ...getSelectValues(elements.spellElements)
+  ]
+    .map(slugify)
+    .filter(Boolean);
+
+  return parts.join('-');
+}
+
+function getSpellIdForSave() {
+  const existingId = elements.spellId.value.trim();
+  if (existingId) return existingId;
+
+  const generatedId = generateSpellIdFromSelection();
+  if (generatedId) {
+    elements.spellId.value = generatedId;
+    return generatedId;
+  }
+
+  const fallbackId = slugify(elements.spellName.value);
+  if (fallbackId) {
+    elements.spellId.value = fallbackId;
+    return fallbackId;
+  }
+
+  return '';
+}
+
 
 function fillSpellForm(spell) {
   elements.spellId.value = spell.id || '';
@@ -2134,9 +2195,16 @@ function bindEvents() {
 
   elements.spellForm.addEventListener('submit', (event) => {
     event.preventDefault();
+
+    const spellId = getSpellIdForSave();
+    if (!spellId) {
+      setMessage(elements.adminMessage, 'Bitte wähle mindestens einen Stein und ein Element oder gib einen Spell-Namen ein.', 'error');
+      return;
+    }
+
     adminAction('app_admin_save_spell', {
-      p_spell_id: elements.spellId.value,
-      p_name: elements.spellName.value,
+      p_spell_id: spellId,
+      p_name: elements.spellName.value.trim() || spellId,
       p_stones: getSelectValues(elements.spellStones),
       p_elements: getSelectValues(elements.spellElements),
       p_active: elements.spellActive.checked
@@ -2159,12 +2227,27 @@ function bindEvents() {
 
   elements.unlockAdminForm.addEventListener('submit', (event) => {
     event.preventDefault();
+
+    const password = elements.unlockPasswordAdmin.value.trim();
+    if (!password) {
+      setMessage(elements.adminMessage, 'Bitte gib ein Unlock-Passwort ein.', 'error');
+      return;
+    }
+
+    const spellIds = getSelectValues(elements.unlockSpellIds);
+    if (!spellIds.length) {
+      setMessage(elements.adminMessage, 'Bitte wähle mindestens einen Spell für das Unlock aus.', 'error');
+      return;
+    }
+
+    const slug = getUnlockSlugForSave();
+
     adminAction('app_admin_save_unlock', {
       p_unlock_id: elements.unlockId.value || null,
-      p_slug: getUnlockSlugForSave(),
-      p_label: elements.unlockLabel.value,
-      p_password: elements.unlockPasswordAdmin.value,
-      p_spell_ids: getSelectValues(elements.unlockSpellIds),
+      p_slug: slug,
+      p_label: getUnlockLabelForSave(slug),
+      p_password: password,
+      p_spell_ids: spellIds,
       p_active: elements.unlockActive.checked
     }, 'Unlock gespeichert.');
   });
